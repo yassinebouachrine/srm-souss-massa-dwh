@@ -1,7 +1,6 @@
--- ============================================================
--- Fichier : 03_seed_dim_region.sql
--- Projet  : SRM Souss-Massa DWH
--- Date    : Juillet 2026
--- ============================================================
+TRUNCATE TABLE gold.dim_region CASCADE;
 
--- TODO: Ajouter les instructions SQL ici
+INSERT INTO gold.dim_region (code_region, nom_region, pays) VALUES
+    ('SM', 'Souss-Massa', 'Maroc');
+
+SELECT * FROM gold.dim_region;

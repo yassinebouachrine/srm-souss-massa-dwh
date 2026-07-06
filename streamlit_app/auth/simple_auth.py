@@ -1,128 +1,178 @@
 """
-============================================================
-SRM Souss-Massa - Authentification simple (dev)
-============================================================
-Pour production: remplacer par LDAP/AD
+SRM Souss-Massa - Authentification (2 comptes)
 """
 
 import streamlit as st
-from streamlit_app.config.settings import settings
+from pathlib import Path
+import base64
 
 
-# Utilisateurs de développement
 DEV_USERS = {
     "admin": {
         "password": "admin123",
-        "role": "Admin",
-        "provinces_autorisees": "ALL",  # Toutes provinces
-        "nom_complet": "Administrateur SRM"
+        "role": "Administrateur",
+        "niveau": "ADMIN",
+        "nom_complet": "Administrateur SRM",
+        "email": "admin@srm-soussmassa.ma",
+        "departement": "Direction Regionale",
+        "peut_valider": True,
+        "peut_saisir": True,
+        "peut_administrer": True,
+        "recoit_alertes": True
     },
-    "agent_agadir": {
-        "password": "agadir123",
-        "role": "Agent DP",
-        "provinces_autorisees": ["Agadir"],
-        "nom_complet": "Agent DP Agadir"
-    },
-    "agent_tiznit": {
-        "password": "tiznit123",
-        "role": "Agent DP",
-        "provinces_autorisees": ["Tiznit"],
-        "nom_complet": "Agent DP Tiznit"
-    },
-    "directeur": {
-        "password": "dir123",
-        "role": "Directeur",
-        "provinces_autorisees": "ALL",
-        "nom_complet": "Directeur Régional"
+    "agent_regional": {
+        "password": "agent123",
+        "role": "Agent Regional",
+        "niveau": "AGENT",
+        "nom_complet": "Agent Regional SRM",
+        "email": "agent@srm-soussmassa.ma",
+        "departement": "Region Souss-Massa",
+        "peut_valider": False,
+        "peut_saisir": True,
+        "peut_administrer": False,
+        "recoit_alertes": False
     }
 }
 
 
+def get_logo_base64():
+    logo_path = Path(__file__).parent.parent / "assets" / "logo_srm.png"
+    if logo_path.exists():
+        with open(logo_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+
+def hide_sidebar():
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            [data-testid="collapsedControl"] { display: none !important; }
+            .main .block-container { max-width: 600px; margin: auto; }
+        </style>
+    """, unsafe_allow_html=True)
+
+
 def check_authentication():
-    """Vérifier si l'utilisateur est authentifié"""
     if "user" not in st.session_state:
         st.session_state.user = None
-    
     return st.session_state.user is not None
 
 
 def show_login_page():
-    """Afficher la page de login"""
-    st.markdown("## 🔐 Connexion")
-    st.markdown("---")
+    hide_sidebar()
+    logo_b64 = get_logo_base64()
+    if logo_b64:
+        st.markdown(f"""
+            <div style="text-align:center; margin-top:1rem;">
+                <img src="data:image/png;base64,{logo_b64}" style="max-width:150px;">
+            </div>
+        """, unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.markdown("""
+        <h2 style="text-align:center; color:#1976D2;">SRM Souss-Massa</h2>
+        <p style="text-align:center; color:#888;">Plateforme de saisie des donnees</p>
+    """, unsafe_allow_html=True)
     
-    with col2:
-        with st.form("login_form"):
-            st.markdown("### 🌊 SRM Souss-Massa")
-            st.markdown("Système de saisie des données")
-            
-            username = st.text_input("👤 Utilisateur", placeholder="ex: admin")
-            password = st.text_input("🔑 Mot de passe", type="password")
-            
-            submitted = st.form_submit_button("Se connecter", type="primary", use_container_width=True)
-            
-            if submitted:
-                if username in DEV_USERS and DEV_USERS[username]["password"] == password:
-                    st.session_state.user = {
-                        "username": username,
-                        "role": DEV_USERS[username]["role"],
-                        "provinces_autorisees": DEV_USERS[username]["provinces_autorisees"],
-                        "nom_complet": DEV_USERS[username]["nom_complet"]
-                    }
-                    st.success(f"✅ Bienvenue {DEV_USERS[username]['nom_complet']} !")
-                    st.rerun()
-                else:
-                    st.error("❌ Utilisateur ou mot de passe incorrect")
+    with st.form("login"):
+        username = st.text_input("Utilisateur")
+        password = st.text_input("Mot de passe", type="password")
+        submit = st.form_submit_button("Connexion", type="primary", use_container_width=True)
         
-        # Info dev
-        with st.expander("💡 Comptes de test (dev)"):
-            st.markdown("""
-            | Utilisateur | Mot de passe | Rôle |
-            |-------------|--------------|------|
-            | admin | admin123 | Admin |
-            | agent_agadir | agadir123 | Agent DP |
-            | agent_tiznit | tiznit123 | Agent DP |
-            | directeur | dir123 | Directeur |
-            """)
+        if submit:
+            if username in DEV_USERS and DEV_USERS[username]["password"] == password:
+                st.session_state.user = {"username": username, **DEV_USERS[username]}
+                st.rerun()
+            else:
+                st.error("Identifiants incorrects")
+    
+    with st.expander("Comptes disponibles"):
+        st.markdown("""
+        | Utilisateur | Mot de passe | Role |
+        |---|---|---|
+        | `admin` | `admin123` | Administrateur (valide les saisies) |
+        | `agent_regional` | `agent123` | Agent Regional (saisit les donnees) |
+        """)
 
 
 def logout():
-    """Déconnexion"""
     st.session_state.user = None
     st.rerun()
 
 
 def show_user_info_sidebar():
-    """Afficher les infos utilisateur dans la sidebar"""
-    if st.session_state.user:
-        with st.sidebar:
-            st.markdown("---")
-            st.markdown(f"### 👤 {st.session_state.user['nom_complet']}")
-            st.markdown(f"**Rôle** : {st.session_state.user['role']}")
-            
-            if isinstance(st.session_state.user['provinces_autorisees'], list):
-                st.markdown(f"**Provinces** : {', '.join(st.session_state.user['provinces_autorisees'])}")
-            else:
-                st.markdown(f"**Provinces** : Toutes")
-            
-            if st.button("🚪 Déconnexion", use_container_width=True):
-                logout()
+    if not st.session_state.user:
+        return
+    
+    user = st.session_state.user
+    logo_b64 = get_logo_base64()
+    
+    if logo_b64:
+        st.markdown(f"""
+            <style>
+                section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; }}
+                [data-testid="stSidebarNav"] li:first-child {{ display: none !important; }}
+                [data-testid="stSidebarNav"]::before {{
+                    content: "";
+                    display: block;
+                    height: 90px;
+                    background-image: url("data:image/png;base64,{logo_b64}");
+                    background-repeat: no-repeat;
+                    background-position: center;
+                    background-size: contain;
+                    margin: 1rem;
+                }}
+                [data-testid="stSidebarNav"]::after {{
+                    content: "SRM Souss-Massa";
+                    display: block;
+                    text-align: center;
+                    color: #1976D2;
+                    font-weight: bold;
+                    padding-bottom: 0.8rem;
+                    border-bottom: 2px solid #1976D2;
+                    margin: 0 1rem 0.5rem 1rem;
+                }}
+                [data-testid="stSidebarNav"] a {{
+                    padding: 0.5rem 1rem !important;
+                    border-radius: 6px !important;
+                    margin: 0.2rem 0.5rem !important;
+                }}
+                [data-testid="stSidebarNav"] a:hover {{ background: rgba(25,118,210,0.08) !important; }}
+                [data-testid="stSidebarNav"] a[aria-current="page"] {{
+                    background: rgba(25,118,210,0.15) !important;
+                    font-weight: 600 !important;
+                }}
+            </style>
+        """, unsafe_allow_html=True)
+    
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown(f"""
+            <div style="padding:0.7rem; background:rgba(25,118,210,0.08);
+                        border-radius:6px; border-left:3px solid #1976D2;">
+                <div style="font-weight:600; color:#1976D2;">{user['nom_complet']}</div>
+                <div style="color:#666; font-size:0.75rem;">{user['role']}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("Deconnexion", use_container_width=True, key="logout"):
+            logout()
 
 
 def get_current_user():
-    """Retourner l'utilisateur courant"""
     return st.session_state.get("user")
 
 
-def check_permission_province(nom_province):
-    """Vérifier si l'utilisateur peut accéder à cette province"""
-    user = get_current_user()
-    if not user:
-        return False
-    
-    if user["provinces_autorisees"] == "ALL":
-        return True
-    
-    return nom_province in user["provinces_autorisees"]
+def user_can_validate():
+    u = get_current_user()
+    return u and u.get("peut_valider", False)
+
+
+def user_can_administer():
+    u = get_current_user()
+    return u and u.get("peut_administrer", False)
+
+
+def user_receives_alerts():
+    u = get_current_user()
+    return u and u.get("recoit_alertes", False)

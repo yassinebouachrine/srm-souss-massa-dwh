@@ -1,0 +1,32 @@
+# ============================================================
+# SRM Souss-Massa - Configuration Streamlit
+# ============================================================
+
+[theme]
+# Theme par defaut : light
+base = "light"
+primaryColor = "#1976D2"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+port = 8501
+address = "localhost"
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 200
+headless = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showSidebarNavigation = true
+toolbarMode = "minimal"
+showErrorDetails = true
+
+[runner]
+magicEnabled = true
+fastReruns = true

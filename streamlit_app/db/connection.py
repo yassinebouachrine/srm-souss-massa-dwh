@@ -1,51 +1,82 @@
-"""
-============================================================
-SRM Souss-Massa - Connexion PostgreSQL
-============================================================
-"""
-
-import streamlit as st
+# db/connection.py
 import psycopg2
-from psycopg2.extras import RealDictCursor
-from sqlalchemy import create_engine
+from psycopg2 import pool, extras
 from contextlib import contextmanager
-from streamlit_app.config.settings import settings
+import streamlit as st
+from config.settings import DB_CONFIG
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def init_connection_pool():
+    """Initialize the database connection pool."""
+    try:
+        return psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            host=DB_CONFIG["host"],
+            port=DB_CONFIG["port"],
+            database=DB_CONFIG["database"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+        )
+    except Exception as e:
+        logger.error(f"Erreur connexion DB: {e}")
+        st.error(f"❌ Impossible de se connecter à la base de données: {e}")
+        return None
 
 
 @st.cache_resource
-def get_engine():
-    """Créer l'engine SQLAlchemy (cache)"""
-    return create_engine(
-        settings.db_connection_string,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True
-    )
+def get_pool():
+    """Get or create cached connection pool."""
+    return init_connection_pool()
 
 
 @contextmanager
-def get_db_connection():
-    """Context manager pour psycopg2"""
-    conn = psycopg2.connect(
-        host=settings.POSTGRES_HOST,
-        port=settings.POSTGRES_PORT,
-        database=settings.POSTGRES_DB,
-        user=settings.POSTGRES_USER,
-        password=settings.POSTGRES_PASSWORD,
-        cursor_factory=RealDictCursor
-    )
+def get_connection():
+    """Context manager for database connections."""
+    _pool = get_pool()
+    if _pool is None:
+        raise Exception("Pool de connexion non disponible")
+    conn = _pool.getconn()
     try:
         yield conn
-    finally:
-        conn.close()
-
-
-def test_connection():
-    """Tester la connexion"""
-    try:
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT version()")
-            return True, cur.fetchone()['version']
+        conn.commit()
     except Exception as e:
-        return False, str(e)
+        conn.rollback()
+        logger.error(f"Erreur DB: {e}")
+        raise
+    finally:
+        _pool.putconn(conn)
+
+
+def execute_query(query: str, params: tuple = None, fetch: str = "all"):
+    """Execute a query and return results."""
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            if fetch == "all":
+                return cur.fetchall()
+            elif fetch == "one":
+                return cur.fetchone()
+            elif fetch == "none":
+                return None
+
+
+def execute_insert(query: str, params: tuple = None):
+    """Execute an insert/update query."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            try:
+                return cur.fetchone()
+            except:
+                return None
+
+
+def execute_many(query: str, params_list: list):
+    """Execute multiple insert/update queries."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            extras.execute_batch(cur, query, params_list)

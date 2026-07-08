@@ -1,50 +1,41 @@
-"""
-============================================================
-SRM Souss-Massa - Fonctions utilitaires
-============================================================
-"""
-
+# utils/helpers.py
 from datetime import datetime
+import uuid
+
+MOIS_FR = {
+    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
+    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
+    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre",
+}
+
+MOIS_FR_SHORT = {
+    1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Jun",
+    7: "Jul", 8: "Aoû", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc",
+}
 
 
-def nom_mois(mois):
-    """Retourner le nom du mois en français"""
-    noms = [
-        'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-        'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
-    ]
-    if 1 <= mois <= 12:
-        return noms[mois - 1]
-    return str(mois)
+def generate_lot_id(province_code: str, data_type: str) -> str:
+    now = datetime.now()
+    short_uuid = uuid.uuid4().hex[:8].upper()
+    return f"{province_code}_{data_type}_{now.strftime('%Y%m%d_%H%M%S')}_{short_uuid}"
 
 
-def formatter_nombre(valeur, decimales=2):
-    """Formater un nombre avec séparateur de milliers"""
-    if valeur is None:
-        return "-"
-    try:
-        return f"{valeur:,.{decimales}f}".replace(",", " ")
-    except:
-        return str(valeur)
+def get_current_period():
+    now = datetime.now()
+    return now.year, now.month
 
 
-def formatter_pourcentage(valeur):
-    """Formater en pourcentage"""
-    if valeur is None:
-        return "-"
-    try:
-        return f"{valeur:.2f}%"
-    except:
-        return str(valeur)
+def format_datetime(dt) -> str:
+    if dt:
+        return dt.strftime("%d/%m/%Y à %H:%M")
+    return "—"
 
 
-def periode_annees(depuis=2024, jusqu_a=None):
-    """Générer liste des années"""
-    if jusqu_a is None:
-        jusqu_a = datetime.now().year + 1
-    return list(range(depuis, jusqu_a + 1))
+def format_date(dt) -> str:
+    if dt:
+        return dt.strftime("%d/%m/%Y")
+    return "—"
 
 
-def mois_avec_noms():
-    """Retourner liste de tuples (numero, nom)"""
-    return [(i, nom_mois(i)) for i in range(1, 13)]
+def get_mois_name(mois: int) -> str:
+    return MOIS_FR.get(mois, str(mois))

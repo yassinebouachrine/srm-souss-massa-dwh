@@ -1,17 +1,17 @@
 # app.py
 import streamlit as st
 import sys, os
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from auth.session_manager import SessionManager
-from config.settings import APP_NAME, APP_VERSION
+from config.settings import APP_NAME, APP_VERSION, SESSION_TIMEOUT_MINUTES, ROLE_PERMISSIONS
 from config.provinces import get_province_name
 from utils.styles import (
     get_login_css, get_global_css, get_logo_base64,
     Icon, get_role_label, get_initials
 )
-
 
 
 from PIL import Image
@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Charger l'icône correctement
 _icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo_srm.png")
-_app_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else "💧"
+_app_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else ""
 
 st.set_page_config(
     page_title=APP_NAME,
@@ -33,7 +33,7 @@ SessionManager.init_session()
 
 
 # ══════════════════════════════════════════════════════════════
-# LOGIN — Logo INTÉGRÉ dans le card
+# LOGIN PAGE
 # ══════════════════════════════════════════════════════════════
 def render_login_page():
     st.markdown(get_login_css(), unsafe_allow_html=True)
@@ -45,7 +45,6 @@ def render_login_page():
         f'<div style="width:70px;height:70px;background:#111827;border-radius:12px;margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;">{Icon.render("DROPLET", 32, "white")}</div>'
     )
 
-    # Card unique contenant logo + titre + formulaire
     st.markdown(f"""
     <div class="login-card">
         <div class="login-header">
@@ -56,9 +55,16 @@ def render_login_page():
     </div>
     """, unsafe_allow_html=True)
 
-    # Formulaire (Streamlit ne peut pas être dans le HTML)
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
+        # Afficher un message si la session a expiré
+        logout_reason = st.session_state.pop("logout_reason", None)
+        if logout_reason == "timeout":
+            st.warning(f"Votre session a expiré après {SESSION_TIMEOUT_MINUTES} minutes "
+                       f"d'inactivité. Veuillez vous reconnecter.")
+        elif logout_reason == "expired":
+            st.info("Votre session a expiré. Veuillez vous reconnecter.")
+
         with st.form("login_form"):
             username = st.text_input("Nom d'utilisateur", placeholder="Ex: agent_dp_tata")
             password = st.text_input("Mot de passe", type="password", placeholder="Votre mot de passe")
@@ -77,27 +83,27 @@ def render_login_page():
                     else:
                         st.error(result["message"])
 
-        with st.expander("Comptes de démonstration"):
-            st.markdown("""
-| Rôle | Identifiant |
-|------|-------------|
-| Agent DP | `agent_dp_tata` |
-| Admin DP | `admin_dp_tata` |
-| Admin Régional | `admin_regional` |
+#         with st.expander("Comptes de démonstration"):
+#             st.markdown("""
+# | Rôle | Identifiant |
+# |------|-------------|
+# | Agent DP | `agent_dp_tata` |
+# | Admin DP | `admin_dp_tata` |
+# | Admin Régional | `admin_regional` |
 
-Mot de passe : `SRM2024!`
-            """)
+# Mot de passe : `SRM2024!`
+#             """)
 
     st.markdown(f"""
     <div class="login-footer">
         {APP_NAME} · v{APP_VERSION}<br>
-        © 2024 Société Régionale Multiservices — Souss-Massa
+        © 2026 Société Régionale Multiservices — Souss-Massa
     </div>
     """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════
-# SIDEBAR
+# SIDEBAR — Navigation sécurisée
 # ══════════════════════════════════════════════════════════════
 def render_sidebar():
     user = SessionManager.get_user()
@@ -111,6 +117,10 @@ def render_sidebar():
         if logo_b64 else
         f'<div style="width:55px;height:55px;background:#111827;border-radius:10px;margin:0 auto 0.5rem;display:flex;align-items:center;justify-content:center;">{Icon.render("DROPLET", 26, "white")}</div>'
     )
+
+    # Calcul du temps restant avant timeout (approximatif, affiché dans la sidebar)
+    remaining_sec = SessionManager.get_remaining_session_time()
+    remaining_min = remaining_sec // 60
 
     with st.sidebar:
         st.markdown(f"""
@@ -133,21 +143,28 @@ def render_sidebar():
         """, unsafe_allow_html=True)
 
         def nav_btn(label, page_key, key):
+            """Bouton de navigation avec vérification des permissions."""
+            if not SessionManager.can_access_page(page_key):
+                return
             active = "nav-active" if current_page == page_key else ""
             st.markdown(f'<div class="{active}">', unsafe_allow_html=True)
             if st.button(label, key=key, use_container_width=True):
                 st.session_state["current_page"] = page_key
+                SessionManager.update_activity()
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
+        # Navigation par rôle
         st.markdown('<div class="nav-section">Général</div>', unsafe_allow_html=True)
         nav_btn("Tableau de bord", "dashboard", "nav_dash")
 
+        # Saisie (agent_dp, admin_dp, super_admin)
         if role in ["agent_dp", "admin_dp", "super_admin"]:
             st.markdown('<div class="nav-section">Saisie</div>', unsafe_allow_html=True)
             nav_btn("Indicateurs DP", "indicateurs", "nav_ind")
             nav_btn("Réclamations", "reclamations", "nav_rec")
 
+        # Validation
         if role in ["admin_dp", "admin_regional", "super_admin"]:
             st.markdown('<div class="nav-section">Validation</div>', unsafe_allow_html=True)
             if role in ["admin_dp", "super_admin"]:
@@ -155,14 +172,36 @@ def render_sidebar():
             if role in ["admin_regional", "super_admin"]:
                 nav_btn("Validation régionale", "validation_regionale", "nav_vreg")
 
+        # Administration
         if role in ["admin_regional", "super_admin"]:
             st.markdown('<div class="nav-section">Administration</div>', unsafe_allow_html=True)
             nav_btn("Utilisateurs", "administration", "nav_adm")
 
+        # Compte (tous)
         st.markdown('<div class="nav-section">Compte</div>', unsafe_allow_html=True)
         nav_btn("Mon profil", "profil", "nav_prof")
 
         st.markdown("---")
+
+        # Indicateur de session
+        if remaining_min <= 1:
+            timeout_color = "#DC2626"
+            timeout_text = f"Session expire dans {remaining_sec}s"
+        elif remaining_min <= 2:
+            timeout_color = "#D97706"
+            timeout_text = f"Session : {remaining_min} min restantes"
+        else:
+            timeout_color = "#6B7280"
+            timeout_text = f"Session : {remaining_min} min restantes"
+
+        st.markdown(f"""
+        <div style="text-align:center;font-size:0.7rem;color:{timeout_color};
+                    padding:0.35rem 0.75rem;background:#F9FAFB;border-radius:5px;
+                    margin-bottom:0.5rem;">
+            {timeout_text}
+        </div>
+        """, unsafe_allow_html=True)
+
         if st.button("Déconnexion", key="btn_logout", use_container_width=True):
             SessionManager.logout()
             st.rerun()
@@ -175,42 +214,67 @@ def render_sidebar():
 
 
 # ══════════════════════════════════════════════════════════════
-# MAIN
+# ROUTER SÉCURISÉ
 # ══════════════════════════════════════════════════════════════
+def secure_route(page: str) -> str:
+    """
+    Vérifie que l'utilisateur peut accéder à la page demandée.
+    Retourne le nom de la page à afficher (ou 'dashboard' par défaut si non autorisé).
+    """
+    if not SessionManager.can_access_page(page):
+        st.session_state["current_page"] = "dashboard"
+        return "dashboard"
+    return page
+
+
 def main():
     if not SessionManager.is_authenticated():
         render_login_page()
     else:
         st.markdown(get_global_css(), unsafe_allow_html=True)
+
+        # Mettre à jour l'activité à chaque rendu
+        SessionManager.update_activity()
+
         render_sidebar()
 
-        page = st.session_state.get("current_page", "dashboard")
+        # Vérification stricte de la page demandée
+        requested_page = st.session_state.get("current_page", "dashboard")
+        page = secure_route(requested_page)
 
-        # ⚠️ IMPORT DEPUIS views/ (pas pages/)
-        if page == "dashboard":
-            from views.page_dashboard import render_dashboard
-            render_dashboard()
-        elif page == "indicateurs":
-            from views.page_indicateurs import render_indicateurs
-            render_indicateurs()
-        elif page == "reclamations":
-            from views.page_reclamations import render_reclamations
-            render_reclamations()
-        elif page == "validation_dp":
-            from views.page_validation_dp import render_validation_dp
-            render_validation_dp()
-        elif page == "validation_regionale":
-            from views.page_validation_regionale import render_validation_regionale
-            render_validation_regionale()
-        elif page == "administration":
-            from views.page_administration import render_administration
-            render_administration()
-        elif page == "profil":
-            from views.page_profil import render_profil
-            render_profil()
-        else:
-            from views.page_dashboard import render_dashboard
-            render_dashboard()
+        # Auto-refresh périodique pour vérifier le timeout
+        # (Streamlit re-run automatiquement à chaque interaction)
+
+        try:
+            if page == "dashboard":
+                from views.page_dashboard import render_dashboard
+                render_dashboard()
+            elif page == "indicateurs":
+                from views.page_indicateurs import render_indicateurs
+                render_indicateurs()
+            elif page == "reclamations":
+                from views.page_reclamations import render_reclamations
+                render_reclamations()
+            elif page == "validation_dp":
+                from views.page_validation_dp import render_validation_dp
+                render_validation_dp()
+            elif page == "validation_regionale":
+                from views.page_validation_regionale import render_validation_regionale
+                render_validation_regionale()
+            elif page == "administration":
+                from views.page_administration import render_administration
+                render_administration()
+            elif page == "profil":
+                from views.page_profil import render_profil
+                render_profil()
+            else:
+                from views.page_dashboard import render_dashboard
+                render_dashboard()
+        except Exception as e:
+            st.error(f"Erreur lors du chargement de la page : {e}")
+            import traceback
+            with st.expander("Détails techniques"):
+                st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":

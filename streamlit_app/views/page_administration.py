@@ -1,286 +1,215 @@
-# views/page_dashboard.py
+# views/page_administration.py
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from auth.session_manager import SessionManager
-from db.queries import get_dashboard_stats, get_staging_lots
+from auth.authentication import AuthManager
+from db.queries import get_audit_logs
 from config.provinces import PROVINCES
-from utils.helpers import format_datetime, get_mois_name
+from utils.helpers import format_datetime
 from utils.styles import (
-    render_page_header, render_metric,
-    render_section_open, render_section_close,
-    render_empty, get_status_badge,
-    apply_chart_theme, get_chart_config,
-    CHART_COLORS, STATUS_LABELS
+    render_page_header, render_section_open, render_section_close,
+    render_empty, render_notice
 )
 
 
-def _pct(part, total):
-    """Calcule un pourcentage."""
-    if total == 0:
-        return 0
-    return round((part / total) * 100, 1)
-
-
-def render_dashboard():
-    SessionManager.require_auth()
+def render_administration():
+    """Page d'administration - gestion des utilisateurs et audit."""
+    SessionManager.require_role(["admin_regional", "super_admin"])
     user = SessionManager.get_user()
-    role = user["role"]
-    id_province = user["id_province"]
 
     st.markdown(
-        render_page_header("Tableau de bord",
-                           f"Vue d'ensemble — {user['nom_complet']}"),
+        render_page_header("Administration",
+                           "Gestion des utilisateurs et journal d'audit"),
         unsafe_allow_html=True,
     )
 
-    # ── Stats ──
-    province_filter = id_province if role in ["agent_dp", "admin_dp"] else None
-    stats = get_dashboard_stats(province_filter)
+    tab_users, tab_logs, tab_create = st.tabs([
+        "Utilisateurs",
+        "Journal d'audit",
+        "Nouveau compte"
+    ])
 
-    indic = stats.get("indicateurs", {})
-    reclam = stats.get("reclamations", {})
-    indic_total = sum(indic.values()) if indic else 0
-    reclam_total = sum(reclam.values()) if reclam else 0
+    with tab_users:
+        _render_users_list(user)
 
-    # Calcul des taux
-    indic_valides = indic.get("valide_regional", 0)
-    reclam_valides = reclam.get("valide_regional", 0)
-    taux_indic = _pct(indic_valides, indic_total) if indic_total else 0
-    taux_reclam = _pct(reclam_valides, reclam_total) if reclam_total else 0
+    with tab_logs:
+        _render_audit_logs()
 
-    # ── Métriques principales avec pourcentages ──
-    c1, c2, c3, c4 = st.columns(4, gap="small")
+    with tab_create:
+        _render_create_user(user)
 
-    with c1:
-        st.markdown(render_metric(
-            "Total Indicateurs", indic_total, "CHART_BAR",
-            sub=f"{indic_valides} validés au DWH",
-            trend=(f"{taux_indic}% validés", "up" if taux_indic >= 50 else "neutral")
-        ), unsafe_allow_html=True)
 
-    with c2:
-        st.markdown(render_metric(
-            "Total Réclamations", reclam_total, "CLIPBOARD",
-            sub=f"{reclam_valides} validées au DWH",
-            trend=(f"{taux_reclam}% validées", "up" if taux_reclam >= 50 else "neutral")
-        ), unsafe_allow_html=True)
+def _render_users_list(current_user):
+    """Liste des utilisateurs avec possibilité d'activer/désactiver."""
+    st.markdown(render_section_open("Comptes utilisateurs", "USERS"), unsafe_allow_html=True)
 
-    with c3:
-        pending = indic.get("soumis", 0) + indic.get("valide_dp", 0)
-        pct_pend = _pct(pending, indic_total)
-        st.markdown(render_metric(
-            "En attente", pending, "CLOCK",
-            sub=f"Indicateurs — {pct_pend}%",
-            trend=(f"{indic.get('soumis', 0)} nouveaux", "neutral")
-        ), unsafe_allow_html=True)
-
-    with c4:
-        pending_r = reclam.get("soumis", 0) + reclam.get("valide_dp", 0)
-        pct_pend_r = _pct(pending_r, reclam_total)
-        st.markdown(render_metric(
-            "En attente", pending_r, "CLOCK",
-            sub=f"Réclamations — {pct_pend_r}%",
-            trend=(f"{reclam.get('soumis', 0)} nouvelles", "neutral")
-        ), unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-
-    # ── Workflow ──
-    with st.expander("Comment fonctionne le workflow de validation ?"):
-        st.markdown("""
-| Étape | Responsable | Action |
-|-------|-------------|--------|
-| 1. Saisie | Agent DP | Saisie des données de sa province |
-| 2. Validation DP | Admin DP | Vérification et validation locale |
-| 3. Validation régionale | Admin Régional | Validation finale |
-| 4. Stockage | Système | Transfert automatique vers le Data Warehouse |
-        """)
-
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════
-    # GRAPHIQUES DE RÉPARTITION
-    # ══════════════════════════════════════════
-    col_l, col_r = st.columns(2, gap="medium")
-
-    # ── Indicateurs : Graphique en donut ──
-    with col_l:
-        st.markdown(render_section_open("Indicateurs — Répartition par statut", "CHART_BAR"),
-                    unsafe_allow_html=True)
-        if indic and sum(indic.values()) > 0:
-            df = pd.DataFrame([
-                {"Statut": STATUS_LABELS.get(k, k),
-                 "Nombre": v,
-                 "Pourcentage": f"{_pct(v, indic_total)}%",
-                 "color_key": k}
-                for k, v in indic.items() if v > 0
-            ])
-
-            fig = go.Figure(data=[go.Pie(
-                labels=df["Statut"],
-                values=df["Nombre"],
-                hole=0.55,
-                marker=dict(
-                    colors=[CHART_COLORS.get(k, "#94A3B8") for k in df["color_key"]],
-                    line=dict(color="#FFFFFF", width=2),
-                ),
-                textinfo="percent",
-                textfont=dict(size=12, color="white", family="Inter"),
-                hovertemplate="<b>%{label}</b><br>%{value} enregistrements<br>%{percent}<extra></extra>",
-            )])
-            fig.update_layout(
-                height=280,
-                annotations=[dict(
-                    text=f"<b>{indic_total}</b><br><span style='font-size:11px;color:#6B7280;'>total</span>",
-                    x=0.5, y=0.5, font=dict(size=20, color="#111827"), showarrow=False
-                )],
-            )
-            fig = apply_chart_theme(fig)
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-
-            # Tableau récapitulatif compact
-            st.dataframe(df[["Statut", "Nombre", "Pourcentage"]],
-                         use_container_width=True, hide_index=True)
-        else:
-            st.markdown(render_empty("INBOX", "Aucun indicateur", "Aucune donnée saisie"),
-                        unsafe_allow_html=True)
+    users = AuthManager.get_all_users()
+    if not users:
+        st.markdown(render_empty("USERS", "Aucun utilisateur"), unsafe_allow_html=True)
         st.markdown(render_section_close(), unsafe_allow_html=True)
+        return
 
-    # ── Réclamations : Graphique en donut ──
-    with col_r:
-        st.markdown(render_section_open("Réclamations — Répartition par statut", "CLIPBOARD"),
-                    unsafe_allow_html=True)
-        if reclam and sum(reclam.values()) > 0:
-            df = pd.DataFrame([
-                {"Statut": STATUS_LABELS.get(k, k),
-                 "Nombre": v,
-                 "Pourcentage": f"{_pct(v, reclam_total)}%",
-                 "color_key": k}
-                for k, v in reclam.items() if v > 0
-            ])
+    # ✅ FIX : Construire le DataFrame ligne par ligne pour gérer les NULL
+    role_labels = {
+        "agent_dp": "Agent DP",
+        "admin_dp": "Admin DP",
+        "admin_regional": "Admin Régional",
+        "super_admin": "Super Admin",
+    }
 
-            fig = go.Figure(data=[go.Pie(
-                labels=df["Statut"],
-                values=df["Nombre"],
-                hole=0.55,
-                marker=dict(
-                    colors=[CHART_COLORS.get(k, "#94A3B8") for k in df["color_key"]],
-                    line=dict(color="#FFFFFF", width=2),
-                ),
-                textinfo="percent",
-                textfont=dict(size=12, color="white", family="Inter"),
-                hovertemplate="<b>%{label}</b><br>%{value} enregistrements<br>%{percent}<extra></extra>",
-            )])
-            fig.update_layout(
-                height=280,
-                annotations=[dict(
-                    text=f"<b>{reclam_total}</b><br><span style='font-size:11px;color:#6B7280;'>total</span>",
-                    x=0.5, y=0.5, font=dict(size=20, color="#111827"), showarrow=False
-                )],
-            )
-            fig = apply_chart_theme(fig)
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+    rows = []
+    for u in users:
+        rows.append({
+            "Identifiant": u.get("username", "—"),
+            "Nom complet": u.get("nom_complet", "—"),
+            "Rôle": role_labels.get(u.get("role"), u.get("role", "—")),
+            "Province": u.get("code_province") or "—",
+            "Actif": "Oui" if u.get("est_actif") else "Non",
+            "Dernière connexion": format_datetime(u.get("derniere_connexion")),
+            "Créé le": format_datetime(u.get("date_creation")),
+        })
 
-            st.dataframe(df[["Statut", "Nombre", "Pourcentage"]],
-                         use_container_width=True, hide_index=True)
-        else:
-            st.markdown(render_empty("INBOX", "Aucune réclamation", "Aucune donnée saisie"),
-                        unsafe_allow_html=True)
-        st.markdown(render_section_close(), unsafe_allow_html=True)
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # ══════════════════════════════════════════
-    # GRAPHIQUE BARRES : Vue par province (Admin uniquement)
-    # ══════════════════════════════════════════
-    if role in ["admin_regional", "super_admin"]:
-        st.markdown(render_section_open("Vue par province", "MAP_PIN",
-                                         "Comparaison des données par province"),
-                    unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("**Activer / Désactiver un compte**")
 
+    sel = st.selectbox(
+        "Sélectionner un utilisateur",
+        [(u["id_utilisateur"], u["username"], u["est_actif"]) for u in users],
+        format_func=lambda x: f"{x[1]}  ({'actif' if x[2] else 'inactif'})",
+        key="user_toggle",
+    )
+
+    b1, b2, _ = st.columns([1.5, 1.5, 3])
+
+    with b1:
+        st.markdown('<div class="btn-success">', unsafe_allow_html=True)
+        if st.button("Activer le compte", use_container_width=True, key="btn_activate"):
+            AuthManager.toggle_user_status(sel[0], True)
+            AuthManager.log_action(current_user["id"], "ACTIVATE_USER",
+                                    "utilisateurs", sel[0])
+            st.success(f"Compte {sel[1]} activé.")
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with b2:
+        st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+        if st.button("Désactiver le compte", use_container_width=True, key="btn_deactivate"):
+            AuthManager.toggle_user_status(sel[0], False)
+            AuthManager.log_action(current_user["id"], "DEACTIVATE_USER",
+                                    "utilisateurs", sel[0])
+            st.warning(f"Compte {sel[1]} désactivé.")
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(render_section_close(), unsafe_allow_html=True)
+
+
+def _render_audit_logs():
+    """Journal d'audit."""
+    st.markdown(render_section_open("Journal d'audit", "FILE_TEXT"), unsafe_allow_html=True)
+
+    nb = st.slider("Nombre d'entrées à afficher", 10, 200, 50)
+    logs = get_audit_logs(limit=nb)
+
+    if logs:
+        # ✅ FIX : construire ligne par ligne
         rows = []
-        chart_data = []
-        for pid, pinfo in PROVINCES.items():
-            ps = get_dashboard_stats(pid)
-            pi = ps.get("indicateurs", {})
-            pr = ps.get("reclamations", {})
-
-            total_i = sum(pi.values())
-            total_r = sum(pr.values())
-
+        for log in logs:
             rows.append({
-                "Province": pinfo["nom"],
-                "Indic. Total": total_i,
-                "Indic. En attente": pi.get("soumis", 0) + pi.get("valide_dp", 0),
-                "Indic. Validés": pi.get("valide_regional", 0),
-                "Réc. Total": total_r,
-                "Réc. En attente": pr.get("soumis", 0) + pr.get("valide_dp", 0),
-                "Réc. Validées": pr.get("valide_regional", 0),
-                "% Validation Indic.": f"{_pct(pi.get('valide_regional', 0), total_i)}%",
-                "% Validation Réc.": f"{_pct(pr.get('valide_regional', 0), total_r)}%",
+                "Date": format_datetime(log.get("date_action")),
+                "Utilisateur": log.get("nom_complet", "—"),
+                "Action": log.get("action", "—"),
+                "Table": log.get("table_cible", "—"),
             })
 
-            chart_data.append({"Province": pinfo["nom"], "Type": "Indicateurs",
-                               "Nombre": total_i})
-            chart_data.append({"Province": pinfo["nom"], "Type": "Réclamations",
-                               "Nombre": total_r})
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.markdown(render_empty("FILE_TEXT", "Aucune activité enregistrée"),
+                    unsafe_allow_html=True)
 
-        # Graphique barres groupées
-        df_chart = pd.DataFrame(chart_data)
-        fig = px.bar(
-            df_chart, x="Province", y="Nombre", color="Type",
-            barmode="group",
-            color_discrete_map={"Indicateurs": "#3B82F6", "Réclamations": "#10B981"},
-            text="Nombre",
-        )
-        fig.update_traces(textposition="outside", textfont=dict(size=11))
-        fig.update_layout(height=350, xaxis_title="", yaxis_title="Nombre d'enregistrements")
-        fig = apply_chart_theme(fig)
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+    st.markdown(render_section_close(), unsafe_allow_html=True)
 
-        # Tableau détaillé
-        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-        st.markdown(render_section_close(), unsafe_allow_html=True)
+def _render_create_user(current_user):
+    """Formulaire de création d'utilisateur."""
+    st.markdown(render_section_open("Créer un nouveau compte", "PLUS"),
+                unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════
-    # LOTS RÉCENTS
-    # ══════════════════════════════════════════
-    st.markdown(render_section_open("Lots récents", "ARCHIVE"), unsafe_allow_html=True)
-    tab_i, tab_r = st.tabs(["Indicateurs", "Réclamations"])
+    st.markdown(render_notice(
+        "Le mot de passe par défaut est <strong>SRM2024!</strong>. "
+        "L'utilisateur devra le changer à la première connexion."
+    ), unsafe_allow_html=True)
 
-    with tab_i:
-        lots = get_staging_lots(province_filter, data_type="indicateurs")
-        if lots:
-            df = pd.DataFrame(lots[:10])
-            df["date_creation"] = df["date_creation"].apply(format_datetime)
-            df["mois"] = df["mois"].apply(get_mois_name)
-            st.dataframe(
-                df[["lot_id", "nom_province", "annee", "mois", "statut",
-                    "nb_enregistrements", "date_creation"]],
-                use_container_width=True, hide_index=True,
-                column_config={
-                    "lot_id": "Lot", "nom_province": "Province",
-                    "annee": "Année", "mois": "Mois", "statut": "Statut",
-                    "nb_enregistrements": "Enreg.", "date_creation": "Créé le",
-                },
+    with st.form("create_user_form"):
+        c1, c2 = st.columns(2)
+
+        with c1:
+            username = st.text_input("Identifiant *",
+                                      placeholder="ex: agent_dp_tata")
+            nom_complet = st.text_input("Nom complet *",
+                                         placeholder="Prénom Nom")
+            email = st.text_input("Email",
+                                   placeholder="email@srm-sm.ma")
+
+        with c2:
+            role = st.selectbox(
+                "Rôle *",
+                ["agent_dp", "admin_dp", "admin_regional", "super_admin"],
+                format_func=lambda x: {
+                    "agent_dp": "Agent DP (saisie)",
+                    "admin_dp": "Administrateur DP (validation locale)",
+                    "admin_regional": "Administrateur Régional (validation finale)",
+                    "super_admin": "Super Administrateur (accès complet)",
+                }[x],
             )
-        else:
-            st.markdown(render_empty("ARCHIVE", "Aucun lot"), unsafe_allow_html=True)
 
-    with tab_r:
-        lots_r = get_staging_lots(province_filter, data_type="reclamations")
-        if lots_r:
-            df = pd.DataFrame(lots_r[:10])
-            df["date_creation"] = df["date_creation"].apply(format_datetime)
-            df["mois"] = df["mois"].apply(get_mois_name)
-            st.dataframe(
-                df[["lot_id", "nom_province", "annee", "mois", "statut",
-                    "nb_enregistrements", "date_creation"]],
-                use_container_width=True, hide_index=True,
+            province_id = st.selectbox(
+                "Province",
+                [None] + list(PROVINCES.keys()),
+                format_func=lambda x: "Aucune (Régional/Super)" if x is None else PROVINCES[x]["nom"],
             )
-        else:
-            st.markdown(render_empty("ARCHIVE", "Aucun lot"), unsafe_allow_html=True)
+
+            password = st.text_input("Mot de passe *",
+                                      type="password",
+                                      value="SRM2024!")
+
+        submitted = st.form_submit_button("Créer le compte",
+                                           type="primary",
+                                           use_container_width=True)
+
+        if submitted:
+            if not username or not nom_complet or not password:
+                st.error("Les champs marqués d'un * sont obligatoires.")
+            elif len(password) < 8:
+                st.error("Le mot de passe doit contenir au moins 8 caractères.")
+            elif role in ["agent_dp", "admin_dp"] and province_id is None:
+                st.error("Une province doit être sélectionnée pour ce rôle.")
+            else:
+                code_province = PROVINCES[province_id]["code"] if province_id else None
+
+                result = AuthManager.create_user(
+                    username=username,
+                    password=password,
+                    nom_complet=nom_complet,
+                    email=email,
+                    role=role,
+                    id_province=province_id,
+                    code_province=code_province,
+                )
+
+                if result["success"]:
+                    AuthManager.log_action(
+                        current_user["id"], "CREATE_USER", "utilisateurs",
+                        details={"username": username, "role": role,
+                                 "province": code_province}
+                    )
+                    st.success(result["message"])
+                    st.rerun()
+                else:
+                    st.error(result["message"])
 
     st.markdown(render_section_close(), unsafe_allow_html=True)

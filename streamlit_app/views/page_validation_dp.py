@@ -1,28 +1,24 @@
 # views/page_validation_dp.py
 """
-Page de validation DP OPTIMISEE pour traiter beaucoup de lots facilement.
-
-Fonctionnalites :
-- Vue synthétique en tableau de tous les lots en attente
-- Filtres avancés (date, centre, agent)
-- Sélection multiple pour validation/rejet en masse
-- Vue détaillée d'un lot à la demande
+Validation DP - Admin DP voit UNIQUEMENT :
+- Lots soumis (statut = soumis) : à valider
+- Lots rejetés au DP (statut = rejete_dp) : peut corriger si besoin
+- Lots validés (statut = valide_dp) : historique traité
 """
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
 from auth.session_manager import SessionManager
 from auth.authentication import AuthManager
 from db.queries import (
     get_staging_lots, get_staging_indicateurs, get_staging_reclamations,
-    update_staging_status
+    update_staging_status, get_rejected_lots
 )
 from config.provinces import get_province_name, get_centres_for_province
 from utils.helpers import format_datetime, get_mois_name, MOIS_FR
 from utils.styles import (
     render_page_header, render_notice, render_empty,
-    render_section_open, render_section_close, get_status_badge,
-    Icon, render_metric
+    render_section_open, render_section_close, render_metric,
+    render_lot_detail_card, render_action_bar, STATUS_LABELS
 )
 
 
@@ -33,331 +29,284 @@ def render_validation_dp():
     province_name = get_province_name(id_province)
 
     st.markdown(
-        render_page_header("Validation DP",
-                           f"Province de {province_name} — Vérification des soumissions"),
+        render_page_header("Validation DP", f"Province de {province_name}"),
         unsafe_allow_html=True,
     )
 
-    # ── Stats rapides ──
-    indic_pending = get_staging_lots(id_province=id_province, statut="soumis",
-                                      data_type="indicateurs") or []
-    reclam_pending = get_staging_lots(id_province=id_province, statut="soumis",
-                                       data_type="reclamations") or []
-    indic_recent = get_staging_lots(id_province=id_province, statut="valide_dp",
-                                     data_type="indicateurs") or []
-    reclam_recent = get_staging_lots(id_province=id_province, statut="valide_dp",
-                                      data_type="reclamations") or []
+    all_indic = get_staging_lots(id_province=id_province, data_type="indicateurs") or []
+    all_reclam = get_staging_lots(id_province=id_province, data_type="reclamations") or []
 
+    indic_pending = [l for l in all_indic if l["statut"] == "soumis"]
+    reclam_pending = [l for l in all_reclam if l["statut"] == "soumis"]
+    indic_done = [l for l in all_indic if l["statut"] in ["valide_dp", "valide_regional"]]
+    reclam_done = [l for l in all_reclam if l["statut"] in ["valide_dp", "valide_regional"]]
+    indic_rej = [l for l in all_indic if l["statut"] in ["rejete_dp", "rejete_regional"]]
+    reclam_rej = [l for l in all_reclam if l["statut"] in ["rejete_dp", "rejete_regional"]]
+
+    # Métriques
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1:
-        st.markdown(render_metric("Indicateurs à valider", len(indic_pending), "CLOCK",
-                                   sub="En attente de votre revue"),
-                    unsafe_allow_html=True)
+        st.markdown(render_metric("À valider (Ind.)", len(indic_pending), "CLOCK",
+                                   sub="En attente"), unsafe_allow_html=True)
     with c2:
-        st.markdown(render_metric("Réclamations à valider", len(reclam_pending), "CLOCK",
-                                   sub="En attente de votre revue"),
-                    unsafe_allow_html=True)
+        st.markdown(render_metric("À valider (Réc.)", len(reclam_pending), "CLOCK",
+                                   sub="En attente"), unsafe_allow_html=True)
     with c3:
-        st.markdown(render_metric("Indic. validés (récent)", len(indic_recent), "CHECK_CIRCLE",
-                                   sub="Transmis au régional"),
-                    unsafe_allow_html=True)
+        st.markdown(render_metric("Traités", len(indic_done) + len(reclam_done), "CHECK_CIRCLE",
+                                   sub="Validés et transmis"), unsafe_allow_html=True)
     with c4:
-        st.markdown(render_metric("Réc. validées (récent)", len(reclam_recent), "CHECK_CIRCLE",
-                                   sub="Transmis au régional"),
-                    unsafe_allow_html=True)
+        st.markdown(render_metric("Rejetés", len(indic_rej) + len(reclam_rej), "X",
+                                   sub="À corriger"), unsafe_allow_html=True)
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-    st.markdown(render_notice(
-        "Utilisez la vue synthétique pour valider plusieurs lots à la fois. "
-        "Cliquez sur « Détails » pour inspecter un lot spécifique.", "info"
-    ), unsafe_allow_html=True)
-
-    tab_i, tab_r = st.tabs([
-        f"Indicateurs ({len(indic_pending)})",
-        f"Réclamations ({len(reclam_pending)})"
+    tab_queue, tab_rejected, tab_history = st.tabs([
+        f"File d'attente ({len(indic_pending) + len(reclam_pending)})",
+        f"Lots rejetés ({len(indic_rej) + len(reclam_rej)})",
+        f"Historique traité ({len(indic_done) + len(reclam_done)})"
     ])
 
-    with tab_i:
-        _render_batch_validation("indicateurs", id_province, user)
+    with tab_queue:
+        st.markdown(render_notice(
+            "Sélectionnez plusieurs lots pour valider ou rejeter en masse.",
+        ), unsafe_allow_html=True)
 
-    with tab_r:
-        _render_batch_validation("reclamations", id_province, user)
+        sub_i, sub_r = st.tabs([
+            f"Indicateurs ({len(indic_pending)})",
+            f"Réclamations ({len(reclam_pending)})"
+        ])
+
+        with sub_i:
+            _render_batch_ui("indicateurs", id_province, user, indic_pending)
+        with sub_r:
+            _render_batch_ui("reclamations", id_province, user, reclam_pending)
+
+    with tab_rejected:
+        st.markdown(render_notice(
+            "En tant qu'admin DP, vous pouvez corriger les lots rejetés à la place des agents si nécessaire.",
+            "info"
+        ), unsafe_allow_html=True)
+
+        sub_ri, sub_rr = st.tabs([
+            f"Indicateurs rejetés ({len(indic_rej)})",
+            f"Réclamations rejetées ({len(reclam_rej)})"
+        ])
+
+        with sub_ri:
+            from views.page_indicateurs import render_rejected_lots
+            render_rejected_lots("indicateurs", id_province, user,
+                                 get_rejected_lots(id_province, "indicateurs") or [])
+        with sub_rr:
+            from views.page_indicateurs import render_rejected_lots
+            render_rejected_lots("reclamations", id_province, user,
+                                 get_rejected_lots(id_province, "reclamations") or [])
+
+    with tab_history:
+        _render_history_table(indic_done, reclam_done)
 
 
-def _render_batch_validation(data_type: str, id_province: int, user: dict):
-    """Vue optimisée pour valider plusieurs lots en masse."""
-    lots = get_staging_lots(id_province=id_province, statut="soumis", data_type=data_type)
-
+def _render_batch_ui(data_type, id_province, user, lots):
     if not lots:
-        st.markdown(render_empty("CHECK_CIRCLE", "Aucun élément à valider",
-                                  "Toutes les données ont été traitées"),
-                    unsafe_allow_html=True)
+        st.markdown(render_empty("CHECK_CIRCLE", "File d'attente vide",
+                                  "Aucun lot en attente"), unsafe_allow_html=True)
         return
 
-    # ══════════════════════════════════════════
-    # FILTRES
-    # ══════════════════════════════════════════
+    lots_enr = _enrich_lots(lots, data_type)
+
+    # Filtres
     st.markdown(render_section_open("Filtres", "FILTER"), unsafe_allow_html=True)
-
-    f1, f2, f3, f4 = st.columns(4)
-
+    f1, f2, f3 = st.columns(3)
     with f1:
-        annees = sorted(set(l["annee"] for l in lots), reverse=True)
-        f_annee = st.selectbox("Année", ["Toutes"] + annees, key=f"f_a_{data_type}")
-
+        annees = sorted(set(l["annee"] for l in lots_enr), reverse=True)
+        f_annee = st.selectbox("Année", ["Toutes"] + annees, key=f"fa_{data_type}")
     with f2:
-        mois_dispo = sorted(set(l["mois"] for l in lots))
+        mois_dispo = sorted(set(l["mois_num"] for l in lots_enr))
         f_mois = st.selectbox("Mois", ["Tous"] + mois_dispo,
                                format_func=lambda x: "Tous" if x == "Tous" else MOIS_FR[x],
-                               key=f"f_m_{data_type}")
-
+                               key=f"fm_{data_type}")
     with f3:
-        agents = sorted(set(_get_agent_name(l["lot_id"], data_type) for l in lots))
-        agents = [a for a in agents if a]
-        f_agent = st.selectbox("Agent", ["Tous"] + agents, key=f"f_ag_{data_type}")
-
-    with f4:
         centres = get_centres_for_province(id_province)
-        centre_names = [c["nom"] for c in centres]
-        f_centre = st.selectbox("Centre", ["Tous"] + centre_names, key=f"f_c_{data_type}")
-
+        f_centre = st.selectbox("Centre",
+                                 ["Tous"] + [c["nom"] for c in centres],
+                                 key=f"fc_{data_type}")
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
-    # Appliquer les filtres
-    filtered_lots = lots
-    if f_annee != "Toutes":
-        filtered_lots = [l for l in filtered_lots if l["annee"] == f_annee]
-    if f_mois != "Tous":
-        filtered_lots = [l for l in filtered_lots if l["mois"] == f_mois]
+    filtered = [l for l in lots_enr
+                if (f_annee == "Toutes" or l["annee"] == f_annee)
+                and (f_mois == "Tous" or l["mois_num"] == f_mois)
+                and (f_centre == "Tous" or l["centre"] == f_centre)]
 
-    # Enrichir les lots avec les détails
-    lots_enriched = []
-    for lot in filtered_lots:
-        if data_type == "indicateurs":
-            details = get_staging_indicateurs(lot_id=lot["lot_id"])
-        else:
-            details = get_staging_reclamations(lot_id=lot["lot_id"])
-
-        if details:
-            first = details[0]
-            agent = first.get("soumis_par_nom", "—")
-            centre = first.get("nom_centre", "—")
-
-            if f_agent != "Tous" and agent != f_agent:
-                continue
-            if f_centre != "Tous" and centre != f_centre:
-                continue
-
-            lots_enriched.append({
-                "lot_id": lot["lot_id"],
-                "agent": agent,
-                "centre": centre,
-                "mois": get_mois_name(lot["mois"]),
-                "annee": lot["annee"],
-                "nb": lot["nb_enregistrements"],
-                "date_soum": format_datetime(first.get("date_soumission")),
-                "raw": lot,
-                "details": details,
-            })
-
-    st.markdown(f"<div style='color:#6B7280;font-size:0.85rem;margin-bottom:0.5rem;'>"
-                f"<strong>{len(lots_enriched)}</strong> lot(s) trouvé(s)</div>",
+    st.markdown(f"<div style='color:#6B7280;font-size:0.85rem;margin:0.5rem 0;'>"
+                f"<strong style='color:#111827;'>{len(filtered)}</strong> lot(s) affiché(s)</div>",
                 unsafe_allow_html=True)
 
-    if not lots_enriched:
-        st.markdown(render_empty("FILTER", "Aucun lot", "Modifiez les filtres pour voir plus de résultats"),
-                    unsafe_allow_html=True)
+    if not filtered:
+        st.markdown(render_empty("FILTER", "Aucun lot"), unsafe_allow_html=True)
         return
 
-    # ══════════════════════════════════════════
-    # VUE TABLEAU SYNTHETIQUE + CHECKBOX
-    # ══════════════════════════════════════════
-    st.markdown(render_section_open(
-        "Sélection multiple", "LAYERS",
-        "Cochez plusieurs lots pour les valider ou rejeter en une seule action"
-    ), unsafe_allow_html=True)
+    # Sélection
+    st.markdown(render_section_open("Lots à valider", "LAYERS"), unsafe_allow_html=True)
 
-    # État de sélection
     sel_key = f"sel_{data_type}"
     if sel_key not in st.session_state:
-        st.session_state[sel_key] = {}
+        st.session_state[sel_key] = set()
 
-    # En-tête sélection tout
-    hc1, hc2, hc3, hc4, hc5, hc6, hc7 = st.columns([0.4, 1.5, 1.5, 1, 0.6, 1.2, 0.8])
-    with hc1:
-        select_all = st.checkbox("", key=f"sa_{data_type}",
-                                  help="Tout sélectionner")
-    with hc2: st.markdown("**Lot**")
-    with hc3: st.markdown("**Agent**")
-    with hc4: st.markdown("**Centre**")
-    with hc5: st.markdown("**Période**")
-    with hc6: st.markdown("**Soumis le**")
-    with hc7: st.markdown("**Enreg.**")
+    tc1, tc2 = st.columns([1, 5])
+    with tc1:
+        if st.button("Tout sélectionner", key=f"selall_{data_type}", use_container_width=True):
+            st.session_state[sel_key] = set(l["lot_id"] for l in filtered)
+            st.rerun()
+    with tc2:
+        if st.button("Tout désélectionner", key=f"unsel_{data_type}"):
+            st.session_state[sel_key] = set()
+            st.rerun()
 
-    st.markdown("<hr style='margin:0.3rem 0;'>", unsafe_allow_html=True)
+    rows = []
+    for lot in filtered:
+        rows.append({
+            "✓": lot["lot_id"] in st.session_state[sel_key],
+            "Agent": lot["agent"],
+            "Centre": lot["centre"],
+            "Période": f"{get_mois_name(lot['mois_num'])[:3]} {lot['annee']}",
+            "Enreg.": lot["nb"],
+            "Soumis le": lot["date_soum"],
+        })
 
-    if select_all:
-        for lot in lots_enriched:
-            st.session_state[sel_key][lot["lot_id"]] = True
-
-    # Liste des lots
-    for lot in lots_enriched:
-        rc1, rc2, rc3, rc4, rc5, rc6, rc7 = st.columns([0.4, 1.5, 1.5, 1, 0.6, 1.2, 0.8])
-
-        with rc1:
-            checked = st.checkbox("", key=f"chk_{data_type}_{lot['lot_id']}",
-                                   value=st.session_state[sel_key].get(lot["lot_id"], False))
-            st.session_state[sel_key][lot["lot_id"]] = checked
-
-        with rc2:
-            st.markdown(f"<code style='font-size:0.7rem;'>{lot['lot_id'][:20]}...</code>",
-                        unsafe_allow_html=True)
-        with rc3:
-            st.markdown(f"<span style='font-size:0.82rem;'>{lot['agent']}</span>",
-                        unsafe_allow_html=True)
-        with rc4:
-            st.markdown(f"<span style='font-size:0.82rem;'>{lot['centre']}</span>",
-                        unsafe_allow_html=True)
-        with rc5:
-            st.markdown(f"<span style='font-size:0.82rem;'>{lot['mois'][:3]} {lot['annee']}</span>",
-                        unsafe_allow_html=True)
-        with rc6:
-            st.markdown(f"<span style='font-size:0.75rem;color:#6B7280;'>{lot['date_soum']}</span>",
-                        unsafe_allow_html=True)
-        with rc7:
-            st.markdown(f"<strong style='font-size:0.85rem;'>{lot['nb']}</strong>",
-                        unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════
-    # ACTIONS DE MASSE
-    # ══════════════════════════════════════════
-    selected_ids = [lid for lid, sel in st.session_state[sel_key].items() if sel]
-    nb_selected = len(selected_ids)
-
-    comment_mass = st.text_area(
-        f"Commentaire pour les {nb_selected} lot(s) sélectionné(s)",
-        placeholder="Obligatoire en cas de rejet",
-        key=f"cm_{data_type}",
-        height=70,
+    df_display = pd.DataFrame(rows)
+    edited = st.data_editor(
+        df_display, use_container_width=True, hide_index=True,
+        disabled=["Agent", "Centre", "Période", "Enreg.", "Soumis le"],
+        column_config={"✓": st.column_config.CheckboxColumn("Sél.", width="small")},
+        key=f"editor_{data_type}",
     )
 
-    ac1, ac2, ac3 = st.columns([1, 1, 3])
-    with ac1:
-        st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-        if st.button(f"Valider ({nb_selected})", key=f"vall_{data_type}",
-                     use_container_width=True, disabled=(nb_selected == 0)):
-            for lid in selected_ids:
-                update_staging_status(data_type, lid, "valide_dp",
-                                      user["id"], comment_mass, "dp")
-                AuthManager.log_action(user["id"],
-                                        f"VALIDATION_DP_{data_type.upper()}_MASS",
-                                        f"staging_{data_type}_dp",
-                                        details={"lot_id": lid})
-            st.session_state[sel_key] = {}
-            st.success(f"{nb_selected} lot(s) validé(s).")
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    for i, row in edited.iterrows():
+        lot_id = filtered[i]["lot_id"]
+        if row["✓"]:
+            st.session_state[sel_key].add(lot_id)
+        else:
+            st.session_state[sel_key].discard(lot_id)
 
-    with ac2:
-        st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-        if st.button(f"Rejeter ({nb_selected})", key=f"rall_{data_type}",
-                     use_container_width=True, disabled=(nb_selected == 0)):
-            if not comment_mass:
-                st.error("Commentaire obligatoire pour un rejet.")
-            else:
-                for lid in selected_ids:
-                    update_staging_status(data_type, lid, "rejete_dp",
-                                          user["id"], comment_mass, "dp")
-                    AuthManager.log_action(user["id"],
-                                            f"REJET_DP_{data_type.upper()}_MASS",
-                                            f"staging_{data_type}_dp",
-                                            details={"lot_id": lid, "motif": comment_mass})
-                st.session_state[sel_key] = {}
-                st.warning(f"{nb_selected} lot(s) rejeté(s).")
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
+    selected_ids = list(st.session_state[sel_key])
+    nb_sel = len(selected_ids)
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════
-    # DETAILS D'UN LOT
-    # ══════════════════════════════════════════
-    st.markdown(render_section_open("Détails d'un lot", "EYE",
-                                     "Sélectionnez un lot pour voir les données saisies"),
-                unsafe_allow_html=True)
+    # Actions
+    st.markdown(render_action_bar(nb_sel), unsafe_allow_html=True)
 
-    lot_options = {f"{l['lot_id'][:25]}... — {l['agent']} ({l['nb']} enreg.)": l
-                   for l in lots_enriched}
-    selected_lot_key = st.selectbox("Choisir un lot", ["—"] + list(lot_options.keys()),
-                                     key=f"det_{data_type}")
+    if nb_sel > 0:
+        comment_mass = st.text_area("Commentaire (obligatoire pour un rejet)",
+                                     key=f"cmt_{data_type}", height=80)
 
-    if selected_lot_key != "—":
-        lot = lot_options[selected_lot_key]
+        ac1, ac2, _ = st.columns([1.2, 1.2, 3])
+        with ac1:
+            st.markdown('<div class="btn-success">', unsafe_allow_html=True)
+            if st.button(f"Valider les {nb_sel} lot(s)",
+                         key=f"vall_{data_type}", use_container_width=True):
+                for lid in selected_ids:
+                    update_staging_status(data_type, lid, "valide_dp",
+                                          user["id"], comment_mass, "dp")
+                    AuthManager.log_action(user["id"],
+                                            f"VALIDATION_DP_{data_type.upper()}",
+                                            f"staging_{data_type}_dp",
+                                            details={"lot_id": lid})
+                st.session_state[sel_key] = set()
+                st.success(f"{nb_sel} lot(s) validé(s) et transmis au régional.")
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown(f"""
-        <div style='background:#F9FAFB;padding:0.75rem 1rem;border-radius:6px;margin-bottom:1rem;'>
-            <div style='font-size:0.85rem;color:#374151;'>
-                <strong>Lot :</strong> <code>{lot['lot_id']}</code><br>
-                <strong>Agent :</strong> {lot['agent']} · <strong>Centre :</strong> {lot['centre']} ·
-                <strong>Période :</strong> {lot['mois']} {lot['annee']}<br>
-                <strong>Soumis le :</strong> {lot['date_soum']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        with ac2:
+            st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+            if st.button(f"Rejeter les {nb_sel} lot(s)",
+                         key=f"rall_{data_type}", use_container_width=True):
+                if not comment_mass:
+                    st.error("Commentaire obligatoire pour un rejet.")
+                else:
+                    for lid in selected_ids:
+                        update_staging_status(data_type, lid, "rejete_dp",
+                                              user["id"], comment_mass, "dp")
+                        AuthManager.log_action(user["id"],
+                                                f"REJET_DP_{data_type.upper()}",
+                                                f"staging_{data_type}_dp",
+                                                details={"lot_id": lid, "motif": comment_mass})
+                    st.session_state[sel_key] = set()
+                    st.warning(f"{nb_sel} lot(s) rejeté(s), retournés à l'agent.")
+                    st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        details = lot["details"]
-        df = pd.DataFrame(details)
+    # Inspection
+    st.markdown(render_section_open("Inspection d'un lot", "EYE"), unsafe_allow_html=True)
+    opts = {f"{l['agent']} — {get_mois_name(l['mois_num'])} {l['annee']} — {l['centre']} "
+            f"({l['nb']} enreg.)": l for l in filtered}
+    sel = st.selectbox("Choisir un lot", ["— Sélectionner —"] + list(opts.keys()),
+                        key=f"insp_{data_type}")
+
+    if sel != "— Sélectionner —":
+        lot = opts[sel]
+        st.markdown(render_lot_detail_card({
+            "lot_id": lot["lot_id"], "agent": lot["agent"], "centre": lot["centre"],
+            "mois": get_mois_name(lot["mois_num"]), "annee": lot["annee"],
+            "nb": lot["nb"], "date_soum": lot["date_soum"],
+        }), unsafe_allow_html=True)
+
+        df = pd.DataFrame(lot["details"])
         if data_type == "indicateurs":
             cols = ["code_indicateur", "libelle_indicateur", "unite",
                     "valeur_mensuelle", "valeur_recapitulatif"]
         else:
             cols = ["code_type", "libelle_reclamation", "nombre_reclamations",
                     "temps_moyen_coupure_h", "delai_moyen_traitement_j", "valeur_brute"]
-
         st.dataframe(df[[c for c in cols if c in df.columns]],
                      use_container_width=True, hide_index=True)
-
-        # Actions individuelles
-        comment_ind = st.text_area("Commentaire (individuel)",
-                                    key=f"ci_{data_type}_{lot['lot_id']}",
-                                    height=70)
-
-        bc1, bc2, _ = st.columns([1, 1, 3])
-        with bc1:
-            st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-            if st.button("Valider ce lot", key=f"v1_{data_type}_{lot['lot_id']}",
-                         use_container_width=True):
-                update_staging_status(data_type, lot["lot_id"], "valide_dp",
-                                      user["id"], comment_ind, "dp")
-                st.success("Lot validé.")
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-        with bc2:
-            st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-            if st.button("Rejeter ce lot", key=f"r1_{data_type}_{lot['lot_id']}",
-                         use_container_width=True):
-                if not comment_ind:
-                    st.error("Commentaire obligatoire.")
-                else:
-                    update_staging_status(data_type, lot["lot_id"], "rejete_dp",
-                                          user["id"], comment_ind, "dp")
-                    st.warning("Lot rejeté.")
-                    st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
 
-def _get_agent_name(lot_id: str, data_type: str) -> str:
-    """Récupère le nom de l'agent qui a soumis le lot."""
-    try:
-        if data_type == "indicateurs":
-            details = get_staging_indicateurs(lot_id=lot_id)
+def _render_history_table(indic_done, reclam_done):
+    st.markdown(render_notice("Historique des lots que vous avez validés."), unsafe_allow_html=True)
+
+    tab_i, tab_r = st.tabs(["Indicateurs", "Réclamations"])
+
+    with tab_i:
+        if indic_done:
+            df = pd.DataFrame(indic_done)
+            df["Créé le"] = df["date_creation"].apply(format_datetime)
+            df["Mois"] = df["mois"].apply(get_mois_name)
+            df["Statut"] = df["statut"].map(STATUS_LABELS).fillna(df["statut"])
+            st.dataframe(df[["annee", "Mois", "Statut", "nb_enregistrements", "Créé le"]],
+                         use_container_width=True, hide_index=True)
         else:
-            details = get_staging_reclamations(lot_id=lot_id)
-        return details[0].get("soumis_par_nom", "—") if details else "—"
-    except:
-        return "—"
+            st.markdown(render_empty("ARCHIVE", "Aucun historique"), unsafe_allow_html=True)
+
+    with tab_r:
+        if reclam_done:
+            df = pd.DataFrame(reclam_done)
+            df["Créé le"] = df["date_creation"].apply(format_datetime)
+            df["Mois"] = df["mois"].apply(get_mois_name)
+            df["Statut"] = df["statut"].map(STATUS_LABELS).fillna(df["statut"])
+            st.dataframe(df[["annee", "Mois", "Statut", "nb_enregistrements", "Créé le"]],
+                         use_container_width=True, hide_index=True)
+        else:
+            st.markdown(render_empty("ARCHIVE", "Aucun historique"), unsafe_allow_html=True)
+
+
+def _enrich_lots(lots, data_type):
+    enriched = []
+    for lot in lots:
+        if data_type == "indicateurs":
+            details = get_staging_indicateurs(lot_id=lot["lot_id"])
+        else:
+            details = get_staging_reclamations(lot_id=lot["lot_id"])
+        if details:
+            first = details[0]
+            enriched.append({
+                "lot_id": lot["lot_id"],
+                "agent": first.get("soumis_par_nom", "—"),
+                "centre": first.get("nom_centre", "—"),
+                "annee": lot["annee"],
+                "mois_num": lot["mois"],
+                "nb": lot["nb_enregistrements"],
+                "date_soum": format_datetime(first.get("date_soumission")),
+                "details": details,
+            })
+    return enriched

@@ -3,33 +3,22 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# ─── Load .env from project root ───
-# Structure attendue :
-#   srm-souss-massa-dwh/
-#   ├── .env
-#   └── streamlit_app/
-#       └── config/settings.py
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ENV_PATH = BASE_DIR / ".env"
 
 if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
 else:
-    # Fallback : chercher un .env local au projet streamlit
     load_dotenv()
 
 
-# ════════════════════════════════════════════════════════════════
 # Environnement
-# ════════════════════════════════════════════════════════════════
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development_local")
 TIMEZONE = os.getenv("TIMEZONE", "Africa/Agadir")
 IS_PRODUCTION = ENVIRONMENT.lower().startswith("prod")
 
 
-# ════════════════════════════════════════════════════════════════
-# Database Configuration (PostgreSQL)
-# ════════════════════════════════════════════════════════════════
+# Database
 DB_CONFIG = {
     "host":     os.getenv("POSTGRES_HOST", "localhost"),
     "port":     int(os.getenv("POSTGRES_PORT", 5432)),
@@ -38,42 +27,44 @@ DB_CONFIG = {
     "password": os.getenv("POSTGRES_PASSWORD", ""),
 }
 
-# Connection string (utile pour SQLAlchemy si besoin plus tard)
 DATABASE_URL = (
     f"postgresql+psycopg2://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
     f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
 )
 
 
-# ════════════════════════════════════════════════════════════════
-# Application Configuration
-# ════════════════════════════════════════════════════════════════
+# Application
 APP_NAME = "SRM Souss-Massa - Data Platform"
 APP_VERSION = "1.0.0"
 REGION = "Souss-Massa"
 SIEGE = "Agadir"
 
 
-# ════════════════════════════════════════════════════════════════
-# Streamlit Configuration
-# ════════════════════════════════════════════════════════════════
+# Streamlit
 STREAMLIT_PORT = int(os.getenv("STREAMLIT_SERVER_PORT", 8501))
 STREAMLIT_HOST = os.getenv("STREAMLIT_SERVER_ADDRESS", "localhost")
 
 
-# ════════════════════════════════════════════════════════════════
-# Security Configuration
-# ════════════════════════════════════════════════════════════════
-# ⚠️ En production, ajoutez SECRET_KEY à votre .env
+# ═══════════════════════════════════════════════════
+# SÉCURITÉ
+# ═══════════════════════════════════════════════════
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
     "srm-souss-massa-secret-key-2024-change-in-production"
 )
+
+# Durée maximale d'une session (heures)
 TOKEN_EXPIRY_HOURS = int(os.getenv("TOKEN_EXPIRY_HOURS", 8))
+
+# Timeout d'inactivité (minutes) - après ce délai sans action, déconnexion auto
+SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", 5))
+
+# Tentatives de connexion échouées avant verrouillage
 MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", 5))
+
+# Durée de verrouillage du compte (minutes)
 LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", 30))
 
-# Warning si en production avec la clé par défaut
 if IS_PRODUCTION and SECRET_KEY.startswith("srm-souss-massa-secret-key-2024"):
     import warnings
     warnings.warn(
@@ -82,16 +73,12 @@ if IS_PRODUCTION and SECRET_KEY.startswith("srm-souss-massa-secret-key-2024"):
     )
 
 
-# ════════════════════════════════════════════════════════════════
-# Data Folders
-# ════════════════════════════════════════════════════════════════
+# Dossiers données
 DATA_RAW_FOLDER = os.getenv("DATA_RAW_FOLDER", "./data/raw")
 DATA_PROCESSED_FOLDER = os.getenv("DATA_PROCESSED_FOLDER", "./data/processed")
 
 
-# ════════════════════════════════════════════════════════════════
-# Validation Workflow
-# ════════════════════════════════════════════════════════════════
+# Workflow
 VALIDATION_STATUS = {
     "BROUILLON":        "brouillon",
     "SOUMIS":           "soumis",
@@ -102,21 +89,34 @@ VALIDATION_STATUS = {
 }
 
 
-# ════════════════════════════════════════════════════════════════
-# Helper : afficher la config au démarrage (utile en debug)
-# ════════════════════════════════════════════════════════════════
+# Matrice des rôles et pages autorisées
+ROLE_PERMISSIONS = {
+    "agent_dp": [
+        "dashboard", "indicateurs", "reclamations", "profil"
+    ],
+    "admin_dp": [
+        "dashboard", "indicateurs", "reclamations",
+        "validation_dp", "profil"
+    ],
+    "admin_regional": [
+        "dashboard", "validation_regionale", "administration", "profil"
+    ],
+    "super_admin": [
+        "dashboard", "indicateurs", "reclamations",
+        "validation_dp", "validation_regionale",
+        "administration", "profil"
+    ],
+}
+
+
 def print_config_summary():
-    """Print a summary of the configuration (without sensitive data)."""
     print("=" * 60)
     print(f"  {APP_NAME} v{APP_VERSION}")
     print("=" * 60)
     print(f"  Environment : {ENVIRONMENT}")
-    print(f"  Timezone    : {TIMEZONE}")
-    print(f"  DB Host     : {DB_CONFIG['host']}:{DB_CONFIG['port']}")
-    print(f"  DB Name     : {DB_CONFIG['database']}")
-    print(f"  DB User     : {DB_CONFIG['user']}")
-    print(f"  Streamlit   : http://{STREAMLIT_HOST}:{STREAMLIT_PORT}")
-    print(f"  .env path   : {ENV_PATH}  (exists: {ENV_PATH.exists()})")
+    print(f"  DB          : {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
+    print(f"  Session timeout : {SESSION_TIMEOUT_MINUTES} min")
+    print(f"  Token expiry    : {TOKEN_EXPIRY_HOURS} h")
     print("=" * 60)
 
 

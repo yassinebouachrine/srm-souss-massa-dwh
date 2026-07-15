@@ -2,8 +2,11 @@
 """
 Validation régionale - Admin régional voit UNIQUEMENT :
 - Lots validés par admin DP (statut = valide_dp) : à valider
-- Lots validés définitivement (statut = valide_regional) : historique DWH
+- Lots validés définitivement (statut = valide_regional) : archivés
 - Lots rejetés au régional (statut = rejete_regional)
+
+L'admin régional peut aussi consulter l'historique des corrections
+pour voir les modifications faites après un rejet.
 """
 import streamlit as st
 import pandas as pd
@@ -11,8 +14,7 @@ from auth.session_manager import SessionManager
 from auth.authentication import AuthManager
 from db.queries import (
     get_staging_lots, get_staging_indicateurs, get_staging_reclamations,
-    update_staging_status, transfer_validated_indicateurs_to_gold,
-    transfer_validated_reclamations_to_gold
+    update_staging_status, get_lot_corrections
 )
 from config.provinces import PROVINCES
 from utils.helpers import format_datetime, get_mois_name, MOIS_FR
@@ -36,7 +38,8 @@ def render_validation_regionale():
 
     st.markdown(render_notice(
         "Vous voyez uniquement les données <strong>déjà validées par les admins DP</strong> "
-        "des 6 provinces.", "info"
+        "des 6 provinces. L'historique des corrections effectuées est disponible pour chaque lot.",
+        "info"
     ), unsafe_allow_html=True)
 
     # Récupérer les lots avec filtrage strict
@@ -49,8 +52,8 @@ def render_validation_regionale():
 
     indic_pending = [l for l in all_indic if l["statut"] == "valide_dp"]
     reclam_pending = [l for l in all_reclam if l["statut"] == "valide_dp"]
-    indic_dwh = [l for l in all_indic if l["statut"] == "valide_regional"]
-    reclam_dwh = [l for l in all_reclam if l["statut"] == "valide_regional"]
+    indic_valides = [l for l in all_indic if l["statut"] == "valide_regional"]
+    reclam_valides = [l for l in all_reclam if l["statut"] == "valide_regional"]
     indic_rej = [l for l in all_indic if l["statut"] == "rejete_regional"]
     reclam_rej = [l for l in all_reclam if l["statut"] == "rejete_regional"]
 
@@ -63,11 +66,14 @@ def render_validation_regionale():
         st.markdown(render_metric("Réc. à valider", len(reclam_pending), "CLOCK",
                                    sub="Validées par les DP"), unsafe_allow_html=True)
     with c3:
-        st.markdown(render_metric("Dans le DWH", len(indic_dwh) + len(reclam_dwh), "DATABASE",
-                                   sub=f"Ind: {len(indic_dwh)} · Réc: {len(reclam_dwh)}"),
+        st.markdown(render_metric("Validés définitivement",
+                                   len(indic_valides) + len(reclam_valides),
+                                   "CHECK_CIRCLE",
+                                   sub=f"Ind: {len(indic_valides)} · Réc: {len(reclam_valides)}"),
                     unsafe_allow_html=True)
     with c4:
-        st.markdown(render_metric("Rejetés par vous", len(indic_rej) + len(reclam_rej), "X",
+        st.markdown(render_metric("Rejetés par vous",
+                                   len(indic_rej) + len(reclam_rej), "X",
                                    sub="Retournés aux DP"), unsafe_allow_html=True)
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
@@ -98,21 +104,22 @@ def render_validation_regionale():
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
     # Onglets
-    tab_queue, tab_dwh = st.tabs([
+    tab_queue, tab_valides = st.tabs([
         f"File d'attente ({len(indic_pending) + len(reclam_pending)})",
-        f"Données au DWH ({len(indic_dwh) + len(reclam_dwh)})"
+        f"Validés définitivement ({len(indic_valides) + len(reclam_valides)})"
     ])
 
     with tab_queue:
         _render_regional_queue(user, indic_pending, reclam_pending)
 
-    with tab_dwh:
-        _render_dwh_history(indic_dwh, reclam_dwh)
+    with tab_valides:
+        _render_valides_history(indic_valides, reclam_valides)
 
 
 def _render_regional_queue(user, indic_pending, reclam_pending):
     st.markdown(render_notice(
-        "Validez ou rejetez les lots. Les données validées seront transférées immédiatement dans le Data Warehouse."
+        "Validez ou rejetez les lots. Les données validées définitivement seront prêtes "
+        "pour être transférées dans le Data Warehouse par le pipeline ETL."
     ), unsafe_allow_html=True)
 
     sub_i, sub_r = st.tabs([
@@ -193,7 +200,8 @@ def _render_regional_batch(data_type, user, lots):
         return
 
     # Sélection multiple
-    st.markdown(render_section_open("Sélection multiple", "LAYERS"), unsafe_allow_html=True)
+    st.markdown(render_section_open("Sélection multiple", "LAYERS"),
+                unsafe_allow_html=True)
 
     sel_key = f"selr_{data_type}"
     if sel_key not in st.session_state:
@@ -201,7 +209,8 @@ def _render_regional_batch(data_type, user, lots):
 
     tc1, tc2 = st.columns([1, 5])
     with tc1:
-        if st.button("Tout sélectionner", key=f"selall_r_{data_type}", use_container_width=True):
+        if st.button("Tout sélectionner", key=f"selall_r_{data_type}",
+                     use_container_width=True):
             st.session_state[sel_key] = set(l["lot_id"] for l in filtered)
             st.rerun()
     with tc2:
@@ -211,8 +220,12 @@ def _render_regional_batch(data_type, user, lots):
 
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
+    # Enrichir les lignes avec le nombre de corrections
     rows_data = []
     for lot in filtered:
+        corrections = get_lot_corrections(lot["lot_id"])
+        nb_corr = len(corrections) if corrections else 0
+
         rows_data.append({
             "✓": lot["lot_id"] in st.session_state[sel_key],
             "Province": lot["province"],
@@ -221,13 +234,15 @@ def _render_regional_batch(data_type, user, lots):
             "Validé DP par": lot["valide_par"],
             "Période": f"{get_mois_name(lot['mois_num'])[:3]} {lot['annee']}",
             "Enreg.": lot["nb"],
+            "Corrections": nb_corr,
             "Date val. DP": lot["date_val_dp"],
         })
 
     df_display = pd.DataFrame(rows_data)
     edited = st.data_editor(
         df_display, use_container_width=True, hide_index=True,
-        disabled=["Province", "Centre", "Agent", "Validé DP par", "Période", "Enreg.", "Date val. DP"],
+        disabled=["Province", "Centre", "Agent", "Validé DP par",
+                  "Période", "Enreg.", "Corrections", "Date val. DP"],
         column_config={"✓": st.column_config.CheckboxColumn("Sél.", width="small")},
         key=f"editorR_{data_type}",
     )
@@ -253,21 +268,17 @@ def _render_regional_batch(data_type, user, lots):
         ac1, ac2, _ = st.columns([1.5, 1.2, 3])
         with ac1:
             st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-            if st.button(f"Valider & transférer au DWH ({nb_sel})",
+            if st.button(f"Valider définitivement ({nb_sel})",
                          key=f"vallr_{data_type}", use_container_width=True):
                 errors = []
                 for lid in selected_ids:
                     try:
                         update_staging_status(data_type, lid, "valide_regional",
                                               user["id"], comment_mass, "regional")
-                        if data_type == "indicateurs":
-                            transfer_validated_indicateurs_to_gold(lid)
-                        else:
-                            transfer_validated_reclamations_to_gold(lid)
                         AuthManager.log_action(user["id"],
                                                 f"VALIDATION_REG_{data_type.upper()}",
                                                 f"staging_{data_type}_dp",
-                                                details={"lot_id": lid, "dwh": True})
+                                                details={"lot_id": lid})
                     except Exception as e:
                         errors.append(f"{lid[-12:]}: {str(e)[:50]}")
 
@@ -275,13 +286,17 @@ def _render_regional_batch(data_type, user, lots):
                 if errors:
                     st.error(f"Erreurs : {len(errors)}\n" + "\n".join(errors))
                 else:
-                    st.success(f"{nb_sel} lot(s) transféré(s) au Data Warehouse.")
+                    st.success(
+                        f"{nb_sel} lot(s) validé(s) définitivement. "
+                        f"Prêts pour le pipeline ETL."
+                    )
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
         with ac2:
             st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-            if st.button(f"Rejeter ({nb_sel})", key=f"rallr_{data_type}", use_container_width=True):
+            if st.button(f"Rejeter ({nb_sel})", key=f"rallr_{data_type}",
+                         use_container_width=True):
                 if not comment_mass:
                     st.error("Commentaire obligatoire pour un rejet.")
                 else:
@@ -293,8 +308,12 @@ def _render_regional_batch(data_type, user, lots):
                     st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # Inspection
-    st.markdown(render_section_open("Inspection d'un lot", "EYE"), unsafe_allow_html=True)
+    # ═══════════════════════════════════════════════════════════
+    # INSPECTION D'UN LOT (avec historique des corrections)
+    # ═══════════════════════════════════════════════════════════
+    st.markdown(render_section_open("Inspection d'un lot", "EYE"),
+                unsafe_allow_html=True)
+
     opts = {f"[{l['province']}] {l['centre']} — {get_mois_name(l['mois_num'])} {l['annee']} "
             f"({l['nb']} enreg.)": l for l in filtered}
     sel = st.selectbox("Choisir un lot", ["— Sélectionner —"] + list(opts.keys()),
@@ -302,6 +321,8 @@ def _render_regional_batch(data_type, user, lots):
 
     if sel != "— Sélectionner —":
         lot = opts[sel]
+
+        # Carte détails du lot
         st.markdown(render_lot_detail_card({
             "lot_id": lot["lot_id"], "agent": lot["agent"], "centre": lot["centre"],
             "mois": get_mois_name(lot["mois_num"]), "annee": lot["annee"],
@@ -312,45 +333,107 @@ def _render_regional_batch(data_type, user, lots):
             "Date validation DP": lot["date_val_dp"],
         }), unsafe_allow_html=True)
 
+        # Commentaire de l'admin DP
         if lot["commentaire_dp"]:
-            st.markdown(render_notice(f"Commentaire de l'Admin DP : {lot['commentaire_dp']}", "info"),
-                        unsafe_allow_html=True)
+            st.markdown(render_notice(
+                f"Commentaire de l'Admin DP : {lot['commentaire_dp']}", "info"
+            ), unsafe_allow_html=True)
 
+        # ── Données actuelles ──
+        st.markdown("#### Données actuelles")
         df = pd.DataFrame(lot["details"])
+
         if data_type == "indicateurs":
-            cols = ["code_indicateur", "libelle_indicateur", "unite",
-                    "valeur_mensuelle", "valeur_recapitulatif"]
+            cols_source = ["code_indicateur", "libelle_indicateur", "categorie",
+                           "unite", "valeur_indicateur"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_indicateur": "Code",
+                "libelle_indicateur": "Indicateur",
+                "categorie": "Catégorie",
+                "unite": "Unité",
+                "valeur_indicateur": "Valeur",
+            })
         else:
-            cols = ["code_type", "libelle_reclamation", "nombre_reclamations",
-                    "temps_moyen_coupure_h", "delai_moyen_traitement_j", "valeur_brute"]
-        st.dataframe(df[[c for c in cols if c in df.columns]],
-                     use_container_width=True, hide_index=True)
+            cols_source = ["code_type", "libelle_reclamation",
+                           "nombre_reclamations", "valeur_brute"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_type": "Code",
+                "libelle_reclamation": "Type",
+                "nombre_reclamations": "Nombre",
+                "valeur_brute": "Valeur",
+            })
+
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        # ═══════════════════════════════════════════════════
+        # HISTORIQUE DES CORRECTIONS
+        # ═══════════════════════════════════════════════════
+        corrections = get_lot_corrections(lot["lot_id"])
+        if corrections:
+            st.markdown("---")
+            st.markdown("#### Historique des corrections")
+            st.markdown(render_notice(
+                f"Ce lot a été corrigé <strong>{len(corrections)}</strong> fois "
+                f"avant d'arriver à vous. Voici le détail des modifications :",
+                "info"
+            ), unsafe_allow_html=True)
+
+            corr_rows = []
+            for c in corrections:
+                corr_rows.append({
+                    "Date": format_datetime(c["date_correction"]),
+                    "Corrigé par": c.get("corrige_par_nom", "—"),
+                    "Rôle": c.get("role_correcteur", "—"),
+                    "Élément": c.get("libelle_element", c.get("code_element", "—")),
+                    "Champ": c["champ_modifie"],
+                    "Ancienne valeur": c["ancienne_valeur"],
+                    "Nouvelle valeur": c["nouvelle_valeur"],
+                })
+
+            df_corr = pd.DataFrame(corr_rows)
+            st.dataframe(df_corr, use_container_width=True, hide_index=True)
+
+            # Statistique
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            col_s1, _, _ = st.columns([1, 1, 2])
+            with col_s1:
+                st.metric("Total corrections", len(corrections))
+        else:
+            st.markdown(render_notice(
+                "Aucune correction n'a été effectuée sur ce lot.",
+                "info"
+            ), unsafe_allow_html=True)
 
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
 
-def _render_dwh_history(indic_dwh, reclam_dwh):
-    """Historique des données transférées au DWH."""
+def _render_valides_history(indic_valides, reclam_valides):
+    """Historique des lots validés définitivement avec possibilité d'inspection."""
     st.markdown(render_notice(
-        "Données définitivement transférées dans le Data Warehouse et disponibles dans Power BI.",
+        "Données validées définitivement et prêtes pour le transfert vers le Data Warehouse "
+        "par le pipeline ETL. L'historique des corrections reste consultable.",
         "success"
     ), unsafe_allow_html=True)
 
     tab_i, tab_r = st.tabs([
-        f"Indicateurs ({len(indic_dwh)})",
-        f"Réclamations ({len(reclam_dwh)})"
+        f"Indicateurs ({len(indic_valides)})",
+        f"Réclamations ({len(reclam_valides)})"
     ])
 
     with tab_i:
-        _render_dwh_table(indic_dwh, "i")
+        _render_valides_table_with_details(indic_valides, "indicateurs", "i")
     with tab_r:
-        _render_dwh_table(reclam_dwh, "r")
+        _render_valides_table_with_details(reclam_valides, "reclamations", "r")
 
 
-def _render_dwh_table(lots, key):
-    """Affiche un tableau des lots dans le DWH."""
+def _render_valides_table_with_details(lots, data_type, key):
+    """Affiche les lots validés avec possibilité d'inspection détaillée."""
     if not lots:
-        st.markdown(render_empty("DATABASE", "Aucune donnée transférée"),
+        st.markdown(render_empty("CHECK_CIRCLE", "Aucune donnée validée"),
                     unsafe_allow_html=True)
         return
 
@@ -358,7 +441,7 @@ def _render_dwh_table(lots, key):
     prov_opts = ["Toutes"] + [(pid, p["nom"]) for pid, p in PROVINCES.items()]
     f_prov = st.selectbox("Filtrer par province", prov_opts,
                            format_func=lambda x: x if x == "Toutes" else x[1],
-                           key=f"dwh_p_{key}")
+                           key=f"val_p_{key}")
 
     filtered = lots
     if isinstance(f_prov, tuple) and f_prov[0] != "Toutes":
@@ -368,16 +451,159 @@ def _render_dwh_table(lots, key):
         st.info("Aucune donnée pour cette province.")
         return
 
-    # ✅ FIX : Construire le DataFrame proprement en évitant les doublons de colonnes
+    # Enrichir avec nb corrections
     rows = []
     for lot in filtered:
+        corrections = get_lot_corrections(lot["lot_id"])
+        nb_corr = len(corrections) if corrections else 0
         rows.append({
             "Province": lot.get("nom_province", "—"),
             "Année": lot.get("annee", "—"),
             "Mois": get_mois_name(lot.get("mois", 0)) if lot.get("mois") else "—",
             "Enreg.": lot.get("nb_enregistrements", 0),
-            "Transféré le": format_datetime(lot.get("date_creation")),
+            "Corrections": nb_corr,
+            "Validé le": format_datetime(lot.get("date_modification")),
         })
 
     df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # ═══════════════════════════════════════════════════
+    # INSPECTION DÉTAILLÉE (données + historique)
+    # ═══════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("#### Inspection détaillée d'un lot validé")
+
+    # Enrichir les lots pour le dropdown
+    lots_enr = []
+    for lot in filtered:
+        if data_type == "indicateurs":
+            details = get_staging_indicateurs(lot_id=lot["lot_id"])
+        else:
+            details = get_staging_reclamations(lot_id=lot["lot_id"])
+        if details:
+            first = details[0]
+            lots_enr.append({
+                "lot_id": lot["lot_id"],
+                "province": lot.get("nom_province", "—"),
+                "centre": first.get("nom_centre", "—"),
+                "agent": first.get("soumis_par_nom", "—"),
+                "valide_dp_par": first.get("valide_dp_par_nom", "—"),
+                "valide_reg_par": first.get("valide_reg_par_nom", "—"),
+                "date_soum": format_datetime(first.get("date_soumission")),
+                "date_val_dp": format_datetime(first.get("date_validation_dp")),
+                "date_val_reg": format_datetime(first.get("date_validation_reg")),
+                "commentaire_dp": first.get("commentaire_dp", ""),
+                "commentaire_reg": first.get("commentaire_regional", ""),
+                "annee": lot.get("annee"),
+                "mois_num": lot.get("mois"),
+                "nb": lot.get("nb_enregistrements", 0),
+                "details": details,
+            })
+
+    opts = {
+        f"[{l['province']}] {l['centre']} — "
+        f"{get_mois_name(l['mois_num']) if l['mois_num'] else '—'} {l['annee']} "
+        f"({l['nb']} enreg.)": l for l in lots_enr
+    }
+    sel = st.selectbox("Choisir un lot pour voir les détails",
+                        ["— Sélectionner —"] + list(opts.keys()),
+                        key=f"insp_val_{key}")
+
+    if sel != "— Sélectionner —":
+        lot = opts[sel]
+
+        # Carte détails
+        st.markdown(render_lot_detail_card({
+            "lot_id": lot["lot_id"],
+            "agent": lot["agent"],
+            "centre": lot["centre"],
+            "mois": get_mois_name(lot["mois_num"]) if lot["mois_num"] else "—",
+            "annee": lot["annee"],
+            "nb": lot["nb"],
+            "date_soum": lot["date_soum"],
+        }, extra_info={
+            "Province": lot["province"],
+            "Validé DP par": lot["valide_dp_par"],
+            "Date validation DP": lot["date_val_dp"],
+            "Validé régional par": lot["valide_reg_par"],
+            "Date validation régionale": lot["date_val_reg"],
+        }), unsafe_allow_html=True)
+
+        # Commentaires
+        if lot["commentaire_dp"]:
+            st.markdown(render_notice(
+                f"Commentaire Admin DP : {lot['commentaire_dp']}", "info"
+            ), unsafe_allow_html=True)
+
+        if lot["commentaire_reg"]:
+            st.markdown(render_notice(
+                f"Votre commentaire (régional) : {lot['commentaire_reg']}", "success"
+            ), unsafe_allow_html=True)
+
+        # ── Données ──
+        st.markdown("#### Données validées")
+        df = pd.DataFrame(lot["details"])
+
+        if data_type == "indicateurs":
+            cols_source = ["code_indicateur", "libelle_indicateur", "categorie",
+                           "unite", "valeur_indicateur"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_indicateur": "Code",
+                "libelle_indicateur": "Indicateur",
+                "categorie": "Catégorie",
+                "unite": "Unité",
+                "valeur_indicateur": "Valeur",
+            })
+        else:
+            cols_source = ["code_type", "libelle_reclamation",
+                           "nombre_reclamations", "valeur_brute"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_type": "Code",
+                "libelle_reclamation": "Type",
+                "nombre_reclamations": "Nombre",
+                "valeur_brute": "Valeur",
+            })
+
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        # ── Historique des corrections ──
+        corrections = get_lot_corrections(lot["lot_id"])
+        if corrections:
+            st.markdown("---")
+            st.markdown("#### Historique des corrections")
+            st.markdown(render_notice(
+                f"Ce lot a été corrigé <strong>{len(corrections)}</strong> fois "
+                f"avant sa validation définitive.",
+                "info"
+            ), unsafe_allow_html=True)
+
+            corr_rows = []
+            for c in corrections:
+                corr_rows.append({
+                    "Date": format_datetime(c["date_correction"]),
+                    "Corrigé par": c.get("corrige_par_nom", "—"),
+                    "Rôle": c.get("role_correcteur", "—"),
+                    "Élément": c.get("libelle_element", c.get("code_element", "—")),
+                    "Champ": c["champ_modifie"],
+                    "Ancienne valeur": c["ancienne_valeur"],
+                    "Nouvelle valeur": c["nouvelle_valeur"],
+                })
+
+            df_corr = pd.DataFrame(corr_rows)
+            st.dataframe(df_corr, use_container_width=True, hide_index=True)
+
+            # Statistique
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            col_s1, _, _ = st.columns([1, 1, 2])
+            with col_s1:
+                st.metric("Total corrections", len(corrections))
+        else:
+            st.markdown(render_notice(
+                "Aucune correction n'a été effectuée sur ce lot.",
+                "info"
+            ), unsafe_allow_html=True)

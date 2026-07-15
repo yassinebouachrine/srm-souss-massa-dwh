@@ -51,6 +51,6 @@ Voir docs/02_installation.md
 
 ## Auteur
 
-- **Developpeur**: [Votre Nom]
+- **Developpeur**: BOUACHRINE Yassine
 - **Periode**: Juillet - Aout 2026
 - **Entreprise**: SRM Souss-Massa

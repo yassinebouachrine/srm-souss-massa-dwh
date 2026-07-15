@@ -47,6 +47,11 @@ class Icon:
     EYE = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
     FILTER = '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>'
     LAYERS = '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'
+    MESSAGE = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
+    MENU = '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
+    CHEVRON_LEFT = '<polyline points="15 18 9 12 15 6"/>'
+    CHEVRON_RIGHT = '<polyline points="9 18 15 12 9 6"/>'
+    LOG_OUT = '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'
 
     @classmethod
     def render(cls, name, size=16, color="currentColor", sw=2):
@@ -72,27 +77,73 @@ def get_global_css() -> str:
         display: none !important;
     }
 
-    button[kind="header"], [data-testid="collapsedControl"] {
-        display: none !important;
-    }
+    /* ═══════ TOGGLE SIDEBAR — Bouton toujours accessible ═══════ */
 
-    section[data-testid="stSidebarNav"],
-    [data-testid="stSidebarNavItems"] {
-        display: none !important;
-    }
-
-    .block-container {
-        padding: 2rem 3rem 4rem 3rem !important;
-        max-width: 1400px !important;
+    /* Bouton fixe en haut à gauche - TOUJOURS à la même position */
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="baseButton-headerNoPadding"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: fixed !important;
+        top: 0.65rem !important;
+        left: 0.65rem !important;
+        z-index: 999999 !important;
         background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 8px !important;
+        padding: 0.35rem !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
+        width: 36px !important;
+        height: 36px !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: background 0.15s ease, border-color 0.15s ease !important;
     }
 
-    /* SIDEBAR */
+    [data-testid="stSidebarCollapseButton"]:hover,
+    [data-testid="stExpandSidebarButton"]:hover,
+    [data-testid="baseButton-headerNoPadding"]:hover {
+        background: #F9FAFB !important;
+        border-color: #9CA3AF !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"] svg,
+    [data-testid="stExpandSidebarButton"] svg,
+    [data-testid="baseButton-headerNoPadding"] svg {
+        width: 18px !important;
+        height: 18px !important;
+        color: #374151 !important;
+    }
+
+    /* Quand la sidebar est OUVERTE, décaler le bouton vers la droite */
+    section[data-testid="stSidebar"][aria-expanded="true"] ~ * [data-testid="stSidebarCollapseButton"],
+    section[data-testid="stSidebar"]:not([aria-expanded="false"]) ~ div [data-testid="stSidebarCollapseButton"] {
+        left: 220px !important;
+    }
+
+    /* Ancien bouton collapsé - forcer visible */
+    button[kind="header"] {
+        display: block !important;
+        visibility: visible !important;
+        z-index: 999999 !important;
+    }
+
+    [data-testid="collapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        z-index: 999999 !important;
+    }
+
+    /* ═══════ SIDEBAR ═══════ */
     section[data-testid="stSidebar"] {
         background: #FFFFFF !important;
         border-right: 1px solid #E5E7EB !important;
         min-width: 260px !important;
         max-width: 260px !important;
+        transition: transform 0.2s ease !important;
     }
 
     section[data-testid="stSidebar"] > div {
@@ -170,6 +221,20 @@ def get_global_css() -> str:
         color: #9CA3AF !important; text-transform: uppercase;
         letter-spacing: 0.8px; padding: 0.7rem 0.85rem 0.3rem !important;
     }
+
+    /* ═══════ BREADCRUMB ═══════ */
+    .breadcrumb {
+        font-size: 0.78rem;
+        color: #6B7280;
+        margin-bottom: 0.75rem;
+        padding: 0.25rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .breadcrumb-sep { color: #D1D5DB; }
+    .breadcrumb-item { color: #9CA3AF; }
+    .breadcrumb-current { color: #111827; font-weight: 600; }
 
     /* PAGE HEADER */
     .page-header { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #E5E7EB; }
@@ -331,6 +396,39 @@ def get_global_css() -> str:
     .prov-stat-lbl { font-size: 0.68rem; color: #6B7280; text-transform: uppercase; }
 
     div[data-testid="column"] { padding: 0 0.35rem; }
+
+    /* ═══════ Retirer les boutons +/- des number inputs ═══════ */
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] {
+        display: none !important;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none !important;
+        margin: 0 !important;
+    }
+
+    input[type="number"] {
+        -moz-appearance: textfield !important;
+    }
+
+    .stNumberInput > div > div > input,
+    .stTextInput > div > div > input {
+        background-color: #FFF !important;
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 6px !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.875rem !important;
+        width: 100% !important;
+    }
+
+    .stNumberInput > div > div > input:focus,
+    .stTextInput > div > div > input:focus {
+        border-color: #111827 !important;
+        box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
+    }
     </style>
     """
 
@@ -350,6 +448,7 @@ def get_login_css() -> str:
 
     #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
     button[kind="header"], [data-testid="collapsedControl"] { display: none !important; }
+    [data-testid="stSidebarCollapseButton"], [data-testid="stExpandSidebarButton"] { display: none !important; }
     section[data-testid="stSidebar"] { display: none !important; }
     section[data-testid="stSidebarNav"] { display: none !important; }
 
@@ -395,6 +494,19 @@ def get_login_css() -> str:
 def render_page_header(title, subtitle=""):
     sub = f'<div class="ph-sub">{subtitle}</div>' if subtitle else ''
     return f'<div class="page-header"><div class="ph-title">{title}</div>{sub}</div>'
+
+
+def render_breadcrumb(section: str, current_page: str, app_name: str = "SRM Souss-Massa"):
+    """Affiche un fil d'Ariane pour la navigation."""
+    return f"""
+    <div class="breadcrumb">
+        <span class="breadcrumb-item">{app_name}</span>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-item">{section}</span>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current">{current_page}</span>
+    </div>
+    """
 
 
 def render_metric(label, value, icon_name="", sub="", trend=None):

@@ -1,7 +1,8 @@
 # app.py
 import streamlit as st
-import sys, os
-from datetime import datetime
+import sys
+import os
+from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -14,22 +15,137 @@ from utils.styles import (
 )
 
 
-from PIL import Image
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Charger l'icône correctement
-_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo_srm.png")
-_app_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else ""
+# ══════════════════════════════════════════════════════════════
+# CONFIGURATION DE L'APP
+# ══════════════════════════════════════════════════════════════
+_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "assets", "logo_srm.png")
+_app_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else None
 
 st.set_page_config(
     page_title=APP_NAME,
-    page_icon=_app_icon,   # ← PIL.Image au lieu du chemin string
+    page_icon=_app_icon,
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': f"# {APP_NAME}\nVersion {APP_VERSION}\n© 2026 SRM Souss-Massa"
+    }
 )
 
 SessionManager.init_session()
+
+
+# ══════════════════════════════════════════════════════════════
+# ROUTES DE L'APPLICATION
+# ══════════════════════════════════════════════════════════════
+PAGES_CONFIG = {
+    "dashboard": {
+        "title": "Tableau de bord",
+        "icon": "DASHBOARD",
+        "module": "views.page_dashboard",
+        "function": "render_dashboard",
+        "section": "Général",
+    },
+    "indicateurs": {
+        "title": "Indicateurs DP",
+        "icon": "CHART_BAR",
+        "module": "views.page_indicateurs",
+        "function": "render_indicateurs",
+        "section": "Saisie",
+    },
+    "reclamations": {
+        "title": "Réclamations",
+        "icon": "MESSAGE",
+        "module": "views.page_reclamations",
+        "function": "render_reclamations",
+        "section": "Saisie",
+    },
+    "validation_dp": {
+        "title": "Validation DP",
+        "icon": "CHECK_CIRCLE",
+        "module": "views.page_validation_dp",
+        "function": "render_validation_dp",
+        "section": "Validation",
+    },
+    "validation_regionale": {
+        "title": "Validation régionale",
+        "icon": "SHIELD",
+        "module": "views.page_validation_regionale",
+        "function": "render_validation_regionale",
+        "section": "Validation",
+    },
+    "administration": {
+        "title": "Utilisateurs",
+        "icon": "USERS",
+        "module": "views.page_administration",
+        "function": "render_administration",
+        "section": "Administration",
+    },
+    "profil": {
+        "title": "Mon profil",
+        "icon": "USER",
+        "module": "views.page_profil",
+        "function": "render_profil",
+        "section": "Compte",
+    },
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# NAVIGATION
+# ══════════════════════════════════════════════════════════════
+def get_current_page() -> str:
+    """Détermine la page courante."""
+    if "current_page" in st.session_state and st.session_state["current_page"]:
+        page = st.session_state["current_page"]
+        if page in PAGES_CONFIG:
+            return page
+
+    query_params = st.query_params
+    if "page" in query_params:
+        page_from_url = query_params["page"]
+        if page_from_url in PAGES_CONFIG:
+            st.session_state["current_page"] = page_from_url
+            return page_from_url
+
+    st.session_state["current_page"] = "dashboard"
+    return "dashboard"
+
+
+def navigate_to(page_key: str):
+    """Navigue vers une page."""
+    if page_key in PAGES_CONFIG:
+        st.session_state["current_page"] = page_key
+        st.query_params["page"] = page_key
+        SessionManager.update_activity()
+
+
+def clear_navigation():
+    """Nettoie l'URL et la page courante."""
+    st.query_params.clear()
+    if "current_page" in st.session_state:
+        del st.session_state["current_page"]
+
+
+def force_url_cleanup():
+    """
+    Injecte du JavaScript pour NETTOYER complètement l'URL côté navigateur.
+    Utilise history.replaceState pour ne pas laisser d'entrée dans l'historique.
+    """
+    st.markdown("""
+        <script>
+            (function() {
+                if (window.location.search) {
+                    const cleanUrl = window.location.protocol + '//' + 
+                                     window.location.host + 
+                                     window.location.pathname;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                }
+            })();
+        </script>
+    """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -38,11 +154,16 @@ SessionManager.init_session()
 def render_login_page():
     st.markdown(get_login_css(), unsafe_allow_html=True)
 
+    # ✅ NETTOYER l'URL immédiatement au chargement de la page login
+    force_url_cleanup()
+
     logo_b64 = get_logo_base64()
     logo_html = (
         f'<img src="data:image/png;base64,{logo_b64}" class="login-logo-img" alt="SRM"/>'
         if logo_b64 else
-        f'<div style="width:70px;height:70px;background:#111827;border-radius:12px;margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;">{Icon.render("DROPLET", 32, "white")}</div>'
+        f'<div style="width:70px;height:70px;background:#111827;border-radius:12px;'
+        f'margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;">'
+        f'{Icon.render("DROPLET", 32, "white")}</div>'
     )
 
     st.markdown(f"""
@@ -57,20 +178,23 @@ def render_login_page():
 
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
-        # Afficher un message si la session a expiré
         logout_reason = st.session_state.pop("logout_reason", None)
         if logout_reason == "timeout":
-            st.warning(f"Votre session a expiré après {SESSION_TIMEOUT_MINUTES} minutes "
-                       f"d'inactivité. Veuillez vous reconnecter.")
+            st.warning(
+                f"Votre session a expiré après {SESSION_TIMEOUT_MINUTES} minutes "
+                f"d'inactivité. Veuillez vous reconnecter."
+            )
         elif logout_reason == "expired":
             st.info("Votre session a expiré. Veuillez vous reconnecter.")
 
         with st.form("login_form"):
             username = st.text_input("Nom d'utilisateur", placeholder="Ex: agent_dp_tata")
-            password = st.text_input("Mot de passe", type="password", placeholder="Votre mot de passe")
+            password = st.text_input("Mot de passe", type="password",
+                                     placeholder="Votre mot de passe")
 
             st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("Se connecter", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("Se connecter", use_container_width=True,
+                                              type="primary")
 
             if submitted:
                 if not username or not password:
@@ -79,20 +203,11 @@ def render_login_page():
                     with st.spinner("Authentification..."):
                         result = SessionManager.login(username, password)
                     if result["success"]:
+                        st.session_state["current_page"] = "dashboard"
+                        st.query_params["page"] = "dashboard"
                         st.rerun()
                     else:
                         st.error(result["message"])
-
-#         with st.expander("Comptes de démonstration"):
-#             st.markdown("""
-# | Rôle | Identifiant |
-# |------|-------------|
-# | Agent DP | `agent_dp_tata` |
-# | Admin DP | `admin_dp_tata` |
-# | Admin Régional | `admin_regional` |
-
-# Mot de passe : `SRM2024!`
-#             """)
 
     st.markdown(f"""
     <div class="login-footer">
@@ -103,26 +218,28 @@ def render_login_page():
 
 
 # ══════════════════════════════════════════════════════════════
-# SIDEBAR — Navigation sécurisée
+# SIDEBAR
 # ══════════════════════════════════════════════════════════════
-def render_sidebar():
+def render_sidebar(current_page: str):
     user = SessionManager.get_user()
     role = user["role"]
-    current_page = st.session_state.get("current_page", "dashboard")
-    province_name = get_province_name(user["id_province"]) if user["id_province"] else "Région complète"
+    province_name = (get_province_name(user["id_province"])
+                     if user["id_province"] else "Région complète")
 
     logo_b64 = get_logo_base64()
     logo_html = (
         f'<img src="data:image/png;base64,{logo_b64}" class="sb-logo-img" alt="SRM"/>'
         if logo_b64 else
-        f'<div style="width:55px;height:55px;background:#111827;border-radius:10px;margin:0 auto 0.5rem;display:flex;align-items:center;justify-content:center;">{Icon.render("DROPLET", 26, "white")}</div>'
+        f'<div style="width:55px;height:55px;background:#111827;border-radius:10px;'
+        f'margin:0 auto 0.5rem;display:flex;align-items:center;justify-content:center;">'
+        f'{Icon.render("DROPLET", 26, "white")}</div>'
     )
 
-    # Calcul du temps restant avant timeout (approximatif, affiché dans la sidebar)
     remaining_sec = SessionManager.get_remaining_session_time()
     remaining_min = remaining_sec // 60
 
     with st.sidebar:
+        # ── Logo ──
         st.markdown(f"""
         <div class="sb-logo-wrap">
             {logo_html}
@@ -131,6 +248,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
 
+        # ── User info ──
         st.markdown(f"""
         <div class="sb-user">
             <div class="sb-user-avatar">{get_initials(user['nom_complet'])}</div>
@@ -142,48 +260,38 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
 
-        def nav_btn(label, page_key, key):
-            """Bouton de navigation avec vérification des permissions."""
+        # ── Navigation ──
+        def nav_btn(page_key: str, key: str):
             if not SessionManager.can_access_page(page_key):
                 return
-            active = "nav-active" if current_page == page_key else ""
-            st.markdown(f'<div class="{active}">', unsafe_allow_html=True)
-            if st.button(label, key=key, use_container_width=True):
-                st.session_state["current_page"] = page_key
-                SessionManager.update_activity()
+
+            config = PAGES_CONFIG[page_key]
+            is_active = (current_page == page_key)
+            active_class = "nav-active" if is_active else ""
+
+            st.markdown(f'<div class="{active_class}">', unsafe_allow_html=True)
+            if st.button(config["title"], key=key, use_container_width=True):
+                navigate_to(page_key)
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Navigation par rôle
-        st.markdown('<div class="nav-section">Général</div>', unsafe_allow_html=True)
-        nav_btn("Tableau de bord", "dashboard", "nav_dash")
+        sections = {}
+        for page_key, config in PAGES_CONFIG.items():
+            if SessionManager.can_access_page(page_key):
+                section = config["section"]
+                sections.setdefault(section, []).append(page_key)
 
-        # Saisie (agent_dp, admin_dp, super_admin)
-        if role in ["agent_dp", "admin_dp", "super_admin"]:
-            st.markdown('<div class="nav-section">Saisie</div>', unsafe_allow_html=True)
-            nav_btn("Indicateurs DP", "indicateurs", "nav_ind")
-            nav_btn("Réclamations", "reclamations", "nav_rec")
-
-        # Validation
-        if role in ["admin_dp", "admin_regional", "super_admin"]:
-            st.markdown('<div class="nav-section">Validation</div>', unsafe_allow_html=True)
-            if role in ["admin_dp", "super_admin"]:
-                nav_btn("Validation DP", "validation_dp", "nav_vdp")
-            if role in ["admin_regional", "super_admin"]:
-                nav_btn("Validation régionale", "validation_regionale", "nav_vreg")
-
-        # Administration
-        if role in ["admin_regional", "super_admin"]:
-            st.markdown('<div class="nav-section">Administration</div>', unsafe_allow_html=True)
-            nav_btn("Utilisateurs", "administration", "nav_adm")
-
-        # Compte (tous)
-        st.markdown('<div class="nav-section">Compte</div>', unsafe_allow_html=True)
-        nav_btn("Mon profil", "profil", "nav_prof")
+        section_order = ["Général", "Saisie", "Validation", "Administration", "Compte"]
+        for section in section_order:
+            if section in sections:
+                st.markdown(f'<div class="nav-section">{section}</div>',
+                            unsafe_allow_html=True)
+                for page_key in sections[section]:
+                    nav_btn(page_key, f"nav_{page_key}")
 
         st.markdown("---")
 
-        # Indicateur de session
+        # ── Indicateur de session ──
         if remaining_min <= 1:
             timeout_color = "#DC2626"
             timeout_text = f"Session expire dans {remaining_sec}s"
@@ -202,10 +310,29 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
 
+        # ══════════════════════════════════════════════════════
+        # ── DÉCONNEXION AVEC FORCE REFRESH ──
+        # ══════════════════════════════════════════════════════
         if st.button("Déconnexion", key="btn_logout", use_container_width=True):
             SessionManager.logout()
-            st.rerun()
+            clear_navigation()
 
+            # ✅ Forcer une redirection complète vers la racine
+            # Cela nettoie l'URL ET recharge complètement la page
+            st.markdown("""
+                <meta http-equiv="refresh" content="0; url=./" />
+                <script>
+                    window.location.replace(window.location.protocol + '//' + 
+                                            window.location.host + 
+                                            window.location.pathname);
+                </script>
+                <style>
+                    body { display: none; }
+                </style>
+            """, unsafe_allow_html=True)
+            st.stop()
+
+        # ── Version ──
         st.markdown(f"""
         <div style="text-align:center;font-size:0.68rem;color:#9CA3AF;margin-top:1.5rem;">
             v{APP_VERSION}
@@ -214,67 +341,60 @@ def render_sidebar():
 
 
 # ══════════════════════════════════════════════════════════════
-# ROUTER SÉCURISÉ
+# ROUTER
 # ══════════════════════════════════════════════════════════════
 def secure_route(page: str) -> str:
-    """
-    Vérifie que l'utilisateur peut accéder à la page demandée.
-    Retourne le nom de la page à afficher (ou 'dashboard' par défaut si non autorisé).
-    """
-    if not SessionManager.can_access_page(page):
-        st.session_state["current_page"] = "dashboard"
+    """Vérifie que l'utilisateur peut accéder à la page."""
+    if page not in PAGES_CONFIG or not SessionManager.can_access_page(page):
         return "dashboard"
     return page
 
 
+def render_page(page_key: str):
+    """Charge dynamiquement et affiche une page."""
+    if page_key not in PAGES_CONFIG:
+        page_key = "dashboard"
+
+    config = PAGES_CONFIG[page_key]
+
+    try:
+        module = __import__(config["module"], fromlist=[config["function"]])
+        render_func = getattr(module, config["function"])
+        render_func()
+    except ImportError as e:
+        st.error(f"Impossible de charger la page « {config['title']} »")
+        with st.expander("Détails de l'erreur"):
+            st.code(f"Module: {config['module']}\nFunction: {config['function']}\n\n{e}")
+    except Exception as e:
+        st.error(f"Erreur lors du chargement de la page : {e}")
+        import traceback
+        with st.expander("Détails techniques"):
+            st.code(traceback.format_exc())
+
+
+# ══════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════
 def main():
     if not SessionManager.is_authenticated():
+        # ✅ Nettoyer côté serveur (query_params + session_state)
+        if "page" in st.query_params:
+            st.query_params.clear()
+        if "current_page" in st.session_state:
+            del st.session_state["current_page"]
+
+        # ✅ Afficher la page login (qui nettoie l'URL avec JavaScript)
         render_login_page()
     else:
         st.markdown(get_global_css(), unsafe_allow_html=True)
 
-        # Mettre à jour l'activité à chaque rendu
         SessionManager.update_activity()
+        current_page = get_current_page()
+        current_page = secure_route(current_page)
+        st.query_params["page"] = current_page
 
-        render_sidebar()
-
-        # Vérification stricte de la page demandée
-        requested_page = st.session_state.get("current_page", "dashboard")
-        page = secure_route(requested_page)
-
-        # Auto-refresh périodique pour vérifier le timeout
-        # (Streamlit re-run automatiquement à chaque interaction)
-
-        try:
-            if page == "dashboard":
-                from views.page_dashboard import render_dashboard
-                render_dashboard()
-            elif page == "indicateurs":
-                from views.page_indicateurs import render_indicateurs
-                render_indicateurs()
-            elif page == "reclamations":
-                from views.page_reclamations import render_reclamations
-                render_reclamations()
-            elif page == "validation_dp":
-                from views.page_validation_dp import render_validation_dp
-                render_validation_dp()
-            elif page == "validation_regionale":
-                from views.page_validation_regionale import render_validation_regionale
-                render_validation_regionale()
-            elif page == "administration":
-                from views.page_administration import render_administration
-                render_administration()
-            elif page == "profil":
-                from views.page_profil import render_profil
-                render_profil()
-            else:
-                from views.page_dashboard import render_dashboard
-                render_dashboard()
-        except Exception as e:
-            st.error(f"Erreur lors du chargement de la page : {e}")
-            import traceback
-            with st.expander("Détails techniques"):
-                st.code(traceback.format_exc())
+        render_sidebar(current_page)
+        render_page(current_page)
 
 
 if __name__ == "__main__":

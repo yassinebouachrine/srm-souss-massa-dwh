@@ -8,6 +8,15 @@ from config.settings import SESSION_TIMEOUT_MINUTES, ROLE_PERMISSIONS
 class SessionManager:
     """Gestion de la session Streamlit avec timeout d'inactivité."""
 
+    # Clés de session à effacer lors du logout
+    SESSION_KEYS_TO_CLEAR = [
+        "authenticated",
+        "user",
+        "token",
+        "last_activity",
+        "current_page",
+    ]
+
     @staticmethod
     def init_session():
         """Initialise les variables de session."""
@@ -31,12 +40,24 @@ class SessionManager:
             st.session_state["user"] = result["user"]
             st.session_state["token"] = result["user"]["token"]
             st.session_state["last_activity"] = datetime.now()
+            # Nouvelle session : toujours démarrer sur dashboard
             st.session_state["current_page"] = "dashboard"
+
+            # Nettoyer d'éventuels états résiduels
+            if "logout_reason" in st.session_state:
+                del st.session_state["logout_reason"]
+
         return result
 
     @staticmethod
     def logout(reason: str = "manual"):
-        """Déconnecte l'utilisateur."""
+        """
+        Déconnecte l'utilisateur et nettoie complètement la session.
+        
+        Args:
+            reason: 'manual', 'timeout', ou 'expired'
+        """
+        # Notifier la base de données de la déconnexion
         if st.session_state.get("user") and st.session_state.get("token"):
             try:
                 AuthManager.logout(
@@ -46,18 +67,66 @@ class SessionManager:
             except Exception:
                 pass
 
-        # Effacer toutes les infos sensibles
+        # Effacer toutes les clés de session liées à l'auth
+        for key in SessionManager.SESSION_KEYS_TO_CLEAR:
+            if key in st.session_state:
+                del st.session_state[key]
+
+        # Réinitialiser les valeurs par défaut pour éviter les KeyError
         st.session_state["authenticated"] = False
         st.session_state["user"] = None
         st.session_state["token"] = None
         st.session_state["last_activity"] = None
-        st.session_state["current_page"] = "dashboard"
+
+        # Nettoyer les états liés aux pages (brouillons, sélections, etc.)
+        SessionManager._clear_page_states()
 
         # Stocker la raison pour l'affichage sur la page login
         if reason == "timeout":
             st.session_state["logout_reason"] = "timeout"
         elif reason == "expired":
             st.session_state["logout_reason"] = "expired"
+
+    @staticmethod
+    def _clear_page_states():
+        """
+        Nettoie les états liés aux différentes pages
+        (brouillons, sélections multiples, confirmations, etc.).
+        """
+        # Préfixes des clés à supprimer
+        prefixes_to_clear = [
+            "sel_",          # sélections multiples validation DP
+            "selr_",         # sélections multiples validation régionale
+            "confirm_",      # confirmations de suppression
+            "confirm_del_",  # confirmations de suppression brouillons
+            "editor_",       # data editors
+            "editorR_",      # data editors régional
+            "draft_",        # brouillons
+            "edit_",         # édition rejetés
+            "nb_custom_",    # réclamations personnalisées
+            "val_",          # valeurs saisies
+            "vm_",           # valeurs mensuelles (ancien)
+            "vr_",           # valeurs récap (ancien)
+            "nb_",           # nombre réclamations
+            "tmc_",          # TMC
+            "dmt_",          # DMT
+            "vb_",           # valeur brute
+            "custom_nom_",   # noms custom
+            "custom_val_",   # valeurs custom
+        ]
+
+        keys_to_delete = []
+        for key in list(st.session_state.keys()):
+            for prefix in prefixes_to_clear:
+                if key.startswith(prefix):
+                    keys_to_delete.append(key)
+                    break
+
+        for key in keys_to_delete:
+            try:
+                del st.session_state[key]
+            except KeyError:
+                pass
 
     @staticmethod
     def check_session_timeout() -> bool:

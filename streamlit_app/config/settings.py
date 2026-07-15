@@ -68,7 +68,7 @@ LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", 30))
 if IS_PRODUCTION and SECRET_KEY.startswith("srm-souss-massa-secret-key-2024"):
     import warnings
     warnings.warn(
-        "⚠️ SECRET_KEY par défaut utilisée en production ! "
+        " SECRET_KEY par défaut utilisée en production ! "
         "Définissez SECRET_KEY dans le fichier .env"
     )
 

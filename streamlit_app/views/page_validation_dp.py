@@ -250,20 +250,40 @@ def _render_batch_ui(data_type, id_province, user, lots):
         }), unsafe_allow_html=True)
 
         df = pd.DataFrame(lot["details"])
+
+        # ✅ CORRIGÉ : Colonnes conformes à la nouvelle structure DB
         if data_type == "indicateurs":
-            cols = ["code_indicateur", "libelle_indicateur", "unite",
-                    "valeur_mensuelle", "valeur_recapitulatif"]
+            cols_source = ["code_indicateur", "libelle_indicateur", "categorie",
+                           "unite", "valeur_indicateur"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_indicateur": "Code",
+                "libelle_indicateur": "Indicateur",
+                "categorie": "Catégorie",
+                "unite": "Unité",
+                "valeur_indicateur": "Valeur",
+            })
         else:
-            cols = ["code_type", "libelle_reclamation", "nombre_reclamations",
-                    "temps_moyen_coupure_h", "delai_moyen_traitement_j", "valeur_brute"]
-        st.dataframe(df[[c for c in cols if c in df.columns]],
-                     use_container_width=True, hide_index=True)
+            cols_source = ["code_type", "libelle_reclamation",
+                           "nombre_reclamations", "valeur_brute"]
+            available = [c for c in cols_source if c in df.columns]
+            df_show = df[available].copy()
+            df_show = df_show.rename(columns={
+                "code_type": "Code",
+                "libelle_reclamation": "Type",
+                "nombre_reclamations": "Nombre",
+                "valeur_brute": "Valeur",
+            })
+
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
 
 def _render_history_table(indic_done, reclam_done):
-    st.markdown(render_notice("Historique des lots que vous avez validés."), unsafe_allow_html=True)
+    st.markdown(render_notice("Historique des lots que vous avez validés."),
+                unsafe_allow_html=True)
 
     tab_i, tab_r = st.tabs(["Indicateurs", "Réclamations"])
 
@@ -276,7 +296,8 @@ def _render_history_table(indic_done, reclam_done):
             st.dataframe(df[["annee", "Mois", "Statut", "nb_enregistrements", "Créé le"]],
                          use_container_width=True, hide_index=True)
         else:
-            st.markdown(render_empty("ARCHIVE", "Aucun historique"), unsafe_allow_html=True)
+            st.markdown(render_empty("ARCHIVE", "Aucun historique"),
+                        unsafe_allow_html=True)
 
     with tab_r:
         if reclam_done:
@@ -287,7 +308,8 @@ def _render_history_table(indic_done, reclam_done):
             st.dataframe(df[["annee", "Mois", "Statut", "nb_enregistrements", "Créé le"]],
                          use_container_width=True, hide_index=True)
         else:
-            st.markdown(render_empty("ARCHIVE", "Aucun historique"), unsafe_allow_html=True)
+            st.markdown(render_empty("ARCHIVE", "Aucun historique"),
+                        unsafe_allow_html=True)
 
 
 def _enrich_lots(lots, data_type):

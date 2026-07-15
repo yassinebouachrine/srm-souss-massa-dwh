@@ -1,4 +1,8 @@
-# Python
+# ═══════════════════════════════════════════════════════════
+# SRM Souss-Massa - Git Ignore
+# ═══════════════════════════════════════════════════════════
+
+# ─── Python ───────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,17 +12,21 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# ─── Environnements virtuels ──────────────────────────────
 venv/
 env/
-.venv
+.venv/
+ENV/
 
-# Environment
+# ─── Variables d'environnement ────────────────────────────
 .env
 .env.local
+.env.production
 *.pem
 *.key
 
-# IDE
+# ─── IDE ──────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
@@ -26,38 +34,24 @@ env/
 .DS_Store
 Thumbs.db
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-jupyter_notebook_config.py
+# ─── Streamlit ────────────────────────────────────────────
+.streamlit/secrets.toml
 
-# Airflow
-airflow_home/logs/
-airflow_home/plugins/__pycache__/
-airflow.db
-airflow-webserver.pid
-airflow.cfg
-webserver_config.py
-standalone_admin_password.txt
-
-# Data
+# ─── Data (à ajuster en Partie 2) ─────────────────────────
 data/raw/*
 data/processed/*
-data/archive/*
-!data/**/.gitkeep
-*.csv
-*.xlsx
-*.xls
-!data/samples/*.csv
-!data/samples/*.xlsx
+!data/raw/.gitkeep
+!data/processed/.gitkeep
 
-# PostgreSQL
-*.dump
-*.sql.gz
-
-# Logs
+# ─── Logs ─────────────────────────────────────────────────
 *.log
 logs/
 
-# Power BI
-*.pbix.bak
+# ─── PostgreSQL ───────────────────────────────────────────
+*.dump
+*.sql.gz
+
+# ─── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,56 +1,62 @@
-# SRM Souss-Massa - Data Warehouse & BI
+# 🌊 SRM Souss-Massa - Data Platform
 
-## Description
+Plateforme régionale de saisie, validation et gestion des données 
+pour la Société Régionale Multiservices de Souss-Massa.
 
-Systeme decisionnel complet pour la Societe Regionale Multiservices Souss-Massa.
+## 📋 État du projet
 
-Ce projet centralise:
-- Indicateurs de performance des 6 Directions Provinciales
-- Donnees capteurs multi-types (Debit, Pression, Index, Amount)
-- Fichier clientele (Gstcom)
-- Referentiels metier (Points de mesure, Groupes, Canaux)
+- ✅ **Partie 1 : Application Streamlit** — Terminée
+  - Authentification sécurisée avec bcrypt
+  - Saisie des indicateurs de performance DP
+  - Saisie des réclamations
+  - Workflow de validation à 3 niveaux (Agent → Admin DP → Admin Régional)
+  - Traçabilité complète des corrections
 
-## Architecture
+- 🔄 **Partie 2 : Pipeline ETL** — À venir
+  - Extraction des données (PMAC, GSTCOM, référentiels)
+  - Transformation et nettoyage
+  - Chargement dans le Data Warehouse
+  - Orchestration avec Airflow
 
-- **Interface saisie**: Streamlit multi-pages (9 pages)
-- **Prototypage ETL**: Jupyter Notebooks
-- **Orchestration**: Apache Airflow
-- **Base de donnees**: PostgreSQL 17 (architecture medaillon)
-- **Visualisation**: Power BI
+- 🔄 **Partie 3 : Data Warehouse & Power BI** — À venir
+  - Modèle en constellation
+  - Dashboards Power BI
 
-## Structure du Projet
+## 🚀 Installation
 
-- **database/**: Scripts SQL (DDL, DML, vues)
-- **notebooks/**: Prototypage ETL en Jupyter (27 notebooks)
-- **streamlit_app/**: Interface Streamlit
-- **airflow_home/**: DAGs Airflow
-- **etl/**: Code Python modulaire
-- **dashboards/**: Rapports Power BI
-- **data/**: Donnees locales (raw + processed)
-- **tests/**: Tests unitaires et integration
-- **scripts/**: Scripts utilitaires
-- **docs/**: Documentation
+### Prérequis
 
-## Data Warehouse
+- Python 3.10+
+- PostgreSQL 17
+- Windows 10/11
 
-- **5 schemas**: staging, bronze, silver, gold, audit
-- **17 dimensions** (dont 3 nouvelles pour capteurs)
-- **5 tables de faits** (schema constellation)
-- **2 tables d'agregats**
-- **~50 tables au total**
+### Étapes
 
-## Workflow ETL
+```bash
+# 1. Cloner le projet
+git clone <url>
+cd srm-souss-massa-dwh
 
-1. **Prototyper** dans notebooks/
-2. **Refactorer** en modules etl/
-3. **Orchestrer** avec des DAGs dans airflow_home/dags/
+# 2. Créer l'environnement virtuel
+python -m venv venv
+venv\Scripts\activate
 
-## Installation
+# 3. Installer les dépendances
+pip install -r requirements.txt
 
-Voir docs/02_installation.md
+# 4. Configurer .env
+copy .env.example .env
+# Éditer .env avec vos identifiants PostgreSQL
 
-## Auteur
+# 5. Créer la base de données
+psql -h localhost -U postgres -c "CREATE DATABASE srm_datawarehouse;"
 
-- **Developpeur**: BOUACHRINE Yassine
-- **Periode**: Juillet - Aout 2026
-- **Entreprise**: SRM Souss-Massa
+# 6. Initialiser les tables
+cd streamlit_app
+python scripts\init_database.py
+
+# 7. Créer les utilisateurs
+python scripts\init_passwords.py
+
+# 8. Lancer l'application
+streamlit run app.py

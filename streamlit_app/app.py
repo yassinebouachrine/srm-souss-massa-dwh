@@ -119,6 +119,8 @@ def navigate_to(page_key: str):
     if page_key in PAGES_CONFIG:
         st.session_state["current_page"] = page_key
         st.query_params["page"] = page_key
+        # Conserver le sid dans l'URL
+        SessionManager._update_url_sid()
         SessionManager.update_activity()
 
 
@@ -313,22 +315,14 @@ def render_sidebar(current_page: str):
         # ══════════════════════════════════════════════════════
         # ── DÉCONNEXION AVEC FORCE REFRESH ──
         # ══════════════════════════════════════════════════════
+                # ── Déconnexion ──
         if st.button("Déconnexion", key="btn_logout", use_container_width=True):
             SessionManager.logout()
             clear_navigation()
-
-            # ✅ Forcer une redirection complète vers la racine
-            # Cela nettoie l'URL ET recharge complètement la page
             st.markdown("""
                 <meta http-equiv="refresh" content="0; url=./" />
-                <script>
-                    window.location.replace(window.location.protocol + '//' + 
-                                            window.location.host + 
-                                            window.location.pathname);
-                </script>
-                <style>
-                    body { display: none; }
-                </style>
+                <script>window.location.replace(window.location.protocol + '//' + window.location.host + window.location.pathname);</script>
+                <style>body { display: none; }</style>
             """, unsafe_allow_html=True)
             st.stop()
 
@@ -377,21 +371,26 @@ def render_page(page_key: str):
 # ══════════════════════════════════════════════════════════════
 def main():
     if not SessionManager.is_authenticated():
-        # ✅ Nettoyer côté serveur (query_params + session_state)
-        if "page" in st.query_params:
+        # Nettoyer l'URL
+        if "page" in st.query_params or "sid" in st.query_params:
             st.query_params.clear()
         if "current_page" in st.session_state:
             del st.session_state["current_page"]
 
-        # ✅ Afficher la page login (qui nettoie l'URL avec JavaScript)
+        # Nettoyer l'URL côté navigateur
+        force_url_cleanup()
+
         render_login_page()
     else:
         st.markdown(get_global_css(), unsafe_allow_html=True)
-
         SessionManager.update_activity()
+
         current_page = get_current_page()
         current_page = secure_route(current_page)
+
+        # Mettre à jour l'URL avec page + sid
         st.query_params["page"] = current_page
+        SessionManager._update_url_sid()
 
         render_sidebar(current_page)
         render_page(current_page)

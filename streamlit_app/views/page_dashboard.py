@@ -233,7 +233,7 @@ def render_dashboard():
 # ════════════════════════════════════════════════════════════════
 
 def _render_donut(data, total):
-    """Donut chart des statuts."""
+    """Donut chart des statuts — centré avec légende propre en dessous."""
     rows = [{"Statut": STATUS_LABELS.get(k, k), "Nombre": v,
              "color": CHART_COLORS.get(k, "#94A3B8")}
             for k, v in data.items() if v > 0]
@@ -243,25 +243,52 @@ def _render_donut(data, total):
         return
 
     df = pd.DataFrame(rows)
+
     fig = go.Figure(data=[go.Pie(
         labels=df["Statut"].tolist(),
         values=df["Nombre"].tolist(),
         hole=0.6,
-        marker=dict(colors=df["color"].tolist(), line=dict(color="#FFF", width=2)),
-        textinfo="percent+label",
-        textposition="outside",
-        textfont=dict(size=11, family="Inter"),
+        marker=dict(
+            colors=df["color"].tolist(),
+            line=dict(color="#FFFFFF", width=2),
+        ),
+        # ✅ Labels DANS les segments (centrés visuellement)
+        textinfo="percent",
+        textposition="inside",
+        insidetextorientation="horizontal",
+        textfont=dict(size=12, color="white", family="Inter"),
         hovertemplate="<b>%{label}</b><br>%{value} enreg. (%{percent})<extra></extra>",
         sort=False,
+        showlegend=True,
     )])
+
     fig.update_layout(
-        height=320, margin=dict(l=20, r=20, t=20, b=60),
-        annotations=[dict(text=f"<b>{total}</b>", x=0.5, y=0.5,
-                          font=dict(size=22, color="#111827"), showarrow=False)],
-        showlegend=False, paper_bgcolor="#FFF", plot_bgcolor="#FFF",
+        height=340,
+        margin=dict(l=10, r=10, t=20, b=20),
+        annotations=[dict(
+            text=f"<b>{total}</b><br><span style='font-size:11px;color:#6B7280;'>Total</span>",
+            x=0.5, y=0.5,
+            font=dict(size=24, color="#111827"),
+            showarrow=False,
+            align="center",
+        )],
+        #  Légende horizontale sous le donut, alignée au centre
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.05,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11, color="#374151"),
+            bgcolor="rgba(0,0,0,0)",
+            itemsizing="constant",
+        ),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
     )
     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-
+    
 
 def _render_provinces_chart(annee_filter, mois_filter, role_view):
     """Graphique horizontal empilé par province avec TOUS les statuts."""

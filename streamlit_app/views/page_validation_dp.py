@@ -11,7 +11,7 @@ from auth.session_manager import SessionManager
 from auth.authentication import AuthManager
 from db.queries import (
     get_staging_lots, get_staging_indicateurs, get_staging_reclamations,
-    update_staging_status, get_rejected_lots
+    update_staging_status, get_rejected_lots, get_lot_corrections
 )
 from config.provinces import get_province_name, get_centres_for_province
 from utils.helpers import format_datetime, get_mois_name, MOIS_FR
@@ -234,7 +234,9 @@ def _render_batch_ui(data_type, id_province, user, lots):
                     st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # Inspection
+    # ═══════════════════════════════════════════════════════════
+    # INSPECTION D'UN LOT (avec historique des corrections)
+    # ═══════════════════════════════════════════════════════════
     st.markdown(render_section_open("Inspection d'un lot", "EYE"), unsafe_allow_html=True)
     opts = {f"{l['agent']} — {get_mois_name(l['mois_num'])} {l['annee']} — {l['centre']} "
             f"({l['nb']} enreg.)": l for l in filtered}
@@ -251,7 +253,7 @@ def _render_batch_ui(data_type, id_province, user, lots):
 
         df = pd.DataFrame(lot["details"])
 
-        # ✅ CORRIGÉ : Colonnes conformes à la nouvelle structure DB
+        # Affichage des données
         if data_type == "indicateurs":
             cols_source = ["code_indicateur", "libelle_indicateur", "categorie",
                            "unite", "valeur_indicateur"]
@@ -266,17 +268,58 @@ def _render_batch_ui(data_type, id_province, user, lots):
             })
         else:
             cols_source = ["code_type", "libelle_reclamation",
-                           "nombre_reclamations", "valeur_brute"]
+                           "categorie_reclamation", "valeur_brute"]
             available = [c for c in cols_source if c in df.columns]
             df_show = df[available].copy()
             df_show = df_show.rename(columns={
                 "code_type": "Code",
                 "libelle_reclamation": "Type",
-                "nombre_reclamations": "Nombre",
+                "categorie_reclamation": "Catégorie",
                 "valeur_brute": "Valeur",
             })
 
         st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # ✅ NOUVEAU : Historique des corrections du lot
+        # ═══════════════════════════════════════════════════════════
+        corrections = get_lot_corrections(lot["lot_id"])
+        if corrections:
+            st.markdown("---")
+            st.markdown("#### Historique des corrections")
+            st.markdown(render_notice(
+                f"Ce lot a été corrigé <strong>{len(corrections)}</strong> fois "
+                f"avant d'être resoumis. Consultez le détail ci-dessous avant validation.",
+                "info"
+            ), unsafe_allow_html=True)
+
+            corr_rows = []
+            for c in corrections:
+                corr_rows.append({
+                    "Date": format_datetime(c["date_correction"]),
+                    "Corrigé par": c.get("corrige_par_nom", "—"),
+                    "Rôle": c.get("role_correcteur", "—"),
+                    "Élément": c.get("libelle_element", c.get("code_element", "—")),
+                    "Champ": c["champ_modifie"],
+                    "Ancienne valeur": c["ancienne_valeur"],
+                    "Nouvelle valeur": c["nouvelle_valeur"],
+                    "Motif rejet initial": c.get("motif_rejet", "—"),
+                })
+            st.dataframe(pd.DataFrame(corr_rows),
+                         use_container_width=True, hide_index=True)
+
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            col_s1, _, _ = st.columns([1, 1, 2])
+            with col_s1:
+                st.metric("Total corrections", len(corrections))
+        else:
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='color:#6B7280;font-size:0.82rem;font-style:italic;'>"
+                "Aucune correction préalable — première soumission de ce lot."
+                "</div>",
+                unsafe_allow_html=True
+            )
 
     st.markdown(render_section_close(), unsafe_allow_html=True)
 

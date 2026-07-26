@@ -1,28 +1,28 @@
-# 🌊 SRM Souss-Massa - Data Platform
+# SRM Souss-Massa - Data Platform
 
 Plateforme régionale de saisie, validation et gestion des données 
 pour la Société Régionale Multiservices de Souss-Massa.
 
-## 📋 État du projet
+## État du projet
 
-- ✅ **Partie 1 : Application Streamlit** — Terminée
+- **Partie 1 : Application Streamlit** — Terminée
   - Authentification sécurisée avec bcrypt
   - Saisie des indicateurs de performance DP
   - Saisie des réclamations
   - Workflow de validation à 3 niveaux (Agent → Admin DP → Admin Régional)
   - Traçabilité complète des corrections
 
-- 🔄 **Partie 2 : Pipeline ETL** — À venir
-  - Extraction des données (PMAC, GSTCOM, référentiels)
+- **Partie 2 : Pipeline ETL** — À venir
+  - Extraction des données (PMAC, PCWIN, GSTCOM, référentiels)
   - Transformation et nettoyage
   - Chargement dans le Data Warehouse
   - Orchestration avec Airflow
 
-- 🔄 **Partie 3 : Data Warehouse & Power BI** — À venir
+- **Partie 3 : Data Warehouse & Power BI** — À venir
   - Modèle en constellation
   - Dashboards Power BI
 
-## 🚀 Installation
+## Installation
 
 ### Prérequis
 

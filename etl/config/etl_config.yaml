@@ -1,0 +1,29 @@
+# ═══════════════════════════════════════════════════════════════
+# Configuration globale ETL - SRM Souss-Massa
+# ═══════════════════════════════════════════════════════════════
+
+paths:
+  data_root: "data"
+  raw: "data/raw"
+  bronze: "data/bronze"
+  silver: "data/silver"
+  rejects: "data/rejects"
+  logs: "data/logs"
+
+database:
+  schema_dwh: "dwh"
+  schema_staging: "app_staging"
+  schema_auth: "app_auth"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(levelname)-8s | %(name)-30s | %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  file_rotation_mb: 10
+  file_backup_count: 5
+
+sources:
+  indicateurs_reclamations:
+    raw_folder: "indicateurs_reclamations"
+    file_pattern: "*.xlsx"
+    source_saisie: "excel_legacy"

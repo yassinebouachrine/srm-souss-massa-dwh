@@ -206,3 +206,37 @@ def resolve_reclamation_id(code: str, libelle: str, categorie: str) -> int:
     raise ValueError(
         f"Code réclamation inconnu : '{code}' (libellé='{libelle}', catégorie='{categorie}')"
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+# MAPPING PROVINCE (Streamlit) → DP (DWH)
+# ═══════════════════════════════════════════════════════════════
+
+# Mapping fixe des id_province (Streamlit) vers code_dp (DWH)
+# Basé sur les seeds de app_staging.ref_province et dwh.dim_dp
+PROVINCE_TO_DP = {
+    1: "DP_TATA",   # Tata
+    2: "DP_TIZ",    # Tiznit
+    3: "DP_CHT",    # Chtouka Ait Baha
+    4: "DP_TAR",    # Taroudant
+    5: "DP_INZ",    # Inezgane Ait Melloul
+    6: "DP_AGA",    # Agadir
+}
+
+
+@lru_cache(maxsize=1)
+def get_staging_centre_to_dwh_centre_mapping() -> dict:
+    """
+    Retourne {id_centre_staging: code_centre_dwh}.
+    
+    Utilisé pour convertir l'id_centre de Streamlit (app_staging.ref_centre)
+    vers le code_centre du DWH (dwh.dim_centre).
+    
+    Les deux tables partagent le même id_centre grâce au seed synchronisé.
+    """
+    df = read_sql("""
+        SELECT rc.id_centre, dc.code_centre
+        FROM app_staging.ref_centre rc
+        JOIN dwh.dim_centre dc ON dc.code_centre = rc.code_centre
+    """)
+    return dict(zip(df["id_centre"], df["code_centre"]))

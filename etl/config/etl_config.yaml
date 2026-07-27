@@ -44,3 +44,12 @@ sources:
     
     # Colonnes à ignorer (calculées dans Excel, pas de vraies données)
     colonnes_ignorer_pattern: "recap"  # ex: "Récap 2025", "récap 2026"
+
+  
+  streamlit_indicateurs_reclamations:
+    source_saisie: "streamlit"
+    schema_source: "app_staging"
+    table_indicateurs: "staging_indicateurs_dp"
+    table_reclamations: "staging_reclamations_dp"
+    # Filtre : uniquement les lots validés au niveau régional
+    statut_a_charger: "valide_regional"

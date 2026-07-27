@@ -20,10 +20,10 @@ VALUES
 
 -- ── Indicateurs de qualité de service (durée) ──
 ('TEMPS_COUPURE',   'Temps moy coupure (h)',         'QoS_Traitement',       FALSE, TRUE,  8),
-('DELAI_TRAIT',     'Délai moy traitement (j)',      'QoS_Traitement',       FALSE, TRUE,  9)
+('DELAI_TRAIT',     'Délai moy traitement (j)',      'QoS_Traitement',       FALSE, TRUE,  9),
 
--- ⚠ Plus de type 'AUTRES' : la catégorie "Reclamation_Divers"
--- est créée dynamiquement par le formulaire (saisie personnalisée)
+-- ── Fourre-tout (uniquement pour compatibilité fichiers Excel legacy) ──
+('AUTRES',          'Autres',                        'Reclamation_Divers',   TRUE,  FALSE, 10)
 
 ON CONFLICT (code_type) DO UPDATE
 SET libelle_reclamation   = EXCLUDED.libelle_reclamation,

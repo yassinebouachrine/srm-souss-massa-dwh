@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════
 -- SEED DWH — Peuplement DIM_CENTRE
--- Synchronisé avec app_staging.ref_centre
+-- Synchronisé avec app_staging.ref_centre + app_staging.ref_province
 -- ═══════════════════════════════════════════════════════════════
 
 TRUNCATE TABLE dwh.dim_centre RESTART IDENTITY CASCADE;
@@ -11,13 +11,14 @@ SELECT
     rc.nom_centre,
     rc.type_centre,
     CASE rp.code_province
-        WHEN 'PROV_TATA' THEN 'DP_TATA'
-        WHEN 'PROV_TIZ'  THEN 'DP_TIZ'
-        WHEN 'PROV_CHT'  THEN 'DP_CHT'
-        WHEN 'PROV_TAR'  THEN 'DP_TAR'
-        WHEN 'PROV_INZ'  THEN 'DP_INZ'
-        WHEN 'PROV_AGA'  THEN 'DP_AGA'
+        WHEN 'TATA'      THEN 'DP_TATA'
+        WHEN 'TIZNIT'    THEN 'DP_TIZ'
+        WHEN 'CHTOUKA'   THEN 'DP_CHT'
+        WHEN 'TAROUDANT' THEN 'DP_TAR'
+        WHEN 'INEZGANE'  THEN 'DP_INZ'
+        WHEN 'AGADIR'    THEN 'DP_AGA'
     END AS code_dp,
     rp.nom_province AS nom_dp
 FROM app_staging.ref_centre rc
-JOIN app_staging.ref_province rp ON rc.id_province = rp.id_province;
+JOIN app_staging.ref_province rp ON rc.id_province = rp.id_province
+ORDER BY rc.id_centre;

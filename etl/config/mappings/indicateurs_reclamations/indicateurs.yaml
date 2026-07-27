@@ -1,0 +1,44 @@
+# ═══════════════════════════════════════════════════════════════
+# Mapping libellé Excel → code_indicateur (DIM_TYPE_INDICATEUR_DP)
+#
+# Format : "Libellé exact dans Excel": CODE_INDICATEUR
+# Le matching est insensible à la casse et aux espaces multiples.
+# ═══════════════════════════════════════════════════════════════
+
+libelles_vers_code:
+  # ─── Performance ───
+  "Rendement (%)":                    REND
+  "Ilp (m3/Jr/KM)":                   ILP
+
+  # ─── Commercial ───
+  "Age moyen compteurs Eau (An)":     AGE_CPT
+  "Nombre clients (U)":               NB_CLI
+  "Ventes (m3)":                      VENTE
+  "Achats (m3)":                      ACHAT
+  "Autoproduction (m3)":              AUTOPROD
+  "Cession (m3)":                     CESSION
+
+  # ─── Fraudes ───
+  "Nombre de fraudes Eau (U)":        NB_FRAUD
+  "Volume Fraudes (m3)":              VOL_FRAUD
+
+  # ─── Maintenance ───
+  "Recherche de fuites (km)":         RECH_FUITE
+  "Fuites sur cdt (U)":               FUITE_CDT
+  "Fuites sur cdt / PS (U)":          FUITE_CDT     # variante possible
+  "Fuites sur Brt (U)":               FUITE_BRT
+  "Fuites compteurs/ PS (U)":         FUITE_CPT
+  "Fuites compteurs / PS (U)":        FUITE_CPT     # variante possible
+
+  # ─── Renouvellement ───
+  "Réseau renouvelé (Km)":            RES_RENOUV
+  "Branchements renouvelé (U)":       BRT_RENOUV
+  "Branchements renouvelés (U)":      BRT_RENOUV    # variante possible
+  "Compteurs renouvelés (U)":         CPT_RENOUV
+
+  # ─── Infrastructure (statique) ───
+  "Linéaire réseau (Km)":             LIN_RES
+  "Réducteurs de pression (U)":       REDUCT_PRES
+  "Secteurs hydrauliques (U)":        SECT_HYD
+  "Etages de pression ( U)":          ETAGE_PRES
+  "Etages de pression (U)":           ETAGE_PRES    # variante possible

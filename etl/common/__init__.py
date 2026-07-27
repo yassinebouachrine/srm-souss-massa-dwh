@@ -1,1 +1,0 @@
-"""Modules utilitaires partagés par tous les pipelines ETL."""

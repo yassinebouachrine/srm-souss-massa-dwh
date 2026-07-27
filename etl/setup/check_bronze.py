@@ -1,0 +1,26 @@
+import pandas as pd
+from etl.common.io_utils import get_latest_parquet, read_parquet
+
+print("\n🔎 VÉRIFICATION BRONZE - INDICATEURS")
+print("=" * 80)
+path = get_latest_parquet("bronze", "indicateurs_reclamations", "indicateurs")
+df = read_parquet(path)
+print(f"📁 Fichier : {path.name}")
+print(f"📊 Shape : {df.shape}")
+print(f"📋 Colonnes : {list(df.columns)}")
+print(f"\n🔍 Aperçu (5 premières lignes) :")
+print(df.head())
+print(f"\n📈 Répartition par DP :")
+print(df["code_dp_source"].value_counts())
+print(f"\n📈 Répartition onglets Recap vs Centres :")
+print(df["est_recap_dp"].value_counts())
+
+print("\n" + "=" * 80)
+print("\n🔎 VÉRIFICATION BRONZE - RÉCLAMATIONS")
+print("=" * 80)
+path = get_latest_parquet("bronze", "indicateurs_reclamations", "reclamations")
+df = read_parquet(path)
+print(f"📁 Fichier : {path.name}")
+print(f"📊 Shape : {df.shape}")
+print(f"📋 Libellés uniques :")
+print(df["libelle_source"].unique())

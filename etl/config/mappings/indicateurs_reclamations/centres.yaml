@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════
+# Mapping nom d'onglet Excel → code_centre (dwh.dim_centre)
+#
+# Les onglets "Recap DP" n'ont pas de centre → NULL
+# Le matching se fait sur le nom exact de l'onglet (normalisé).
+# ═══════════════════════════════════════════════════════════════
+
+onglets_vers_centre:
+  # ═══ DP AGADIR ═══
+  "Agadir (Ex-RAMSA)":       C_AGA_01
+  "Drarga":                  C_AGA_02
+  "Douars Drarga (TAMAIT)":  C_AGA_03
+  "Amskroud":                C_AGA_04
+  "Douars Amskroud":         C_AGA_05
+  "Douars Taghazout":        C_AGA_06
+  "Taghazout":               C_AGA_07
+  "Douars Immouzer":         C_AGA_08
+  "Immouzer":                C_AGA_09
+  "Tamri":                   C_AGA_10
+  "Douars Tamri":            C_AGA_11
+  "Douars Imsouane":         C_AGA_12
+  "Imsouane":                C_AGA_13
+  "Aziar":                   C_AGA_14
+
+  # ═══ DP CHTOUKA AIT BAHA ═══
+  "Biougra":                 C_CHT_01
+  "Sidi Bibi":               C_CHT_02
+  "Massa Douars":            C_CHT_03
+  "Massa":                   C_CHT_04
+  "Ait Baha":                C_CHT_05
+  "Ait Baha Douars":         C_CHT_06
+  "Belfaa et Douars":        C_CHT_07
+  "Ait Milk":                C_CHT_08
+  "Ait Milk Douars":         C_CHT_09
+  "Idaougnidif":             C_CHT_10
+  "Douira":                  C_CHT_11
+  "Inchaden":                C_CHT_12
+  "Ait Aamira":              C_CHT_13
+
+  # ═══ DP INEZGANE AIT MELLOUL ═══
+  "Lqliaa":                  C_INZ_01
+  "Temsia":                  C_INZ_02
+  "Ouled Dahhou":            C_INZ_03
+
+  # ═══ DP TAROUDANT ═══
+  "Taroudant":               C_TAR_01
+  "Ouled Teima":             C_TAR_02
+  "Ouled Berhil":            C_TAR_03
+  "Ait Iaaza":               C_TAR_04
+  "Taliouine":               C_TAR_05
+  "Laglalcha":               C_TAR_06
+  "Aoulouz":                 C_TAR_07
+  "Sidi El Guerdan":         C_TAR_08
+  "Sidi Mohamed Lhamri":     C_TAR_09
+  "Ighrem":                  C_TAR_10
+  "Ait Addellah":            C_TAR_11
+
+  # ═══ DP TATA ═══
+  "Tata":                    C_TATA_01
+  "Foum Zguid":              C_TATA_02
+  "Ait Baha Mbarek":         C_TATA_03
+  "Akka":                    C_TATA_04
+  "Foum Lhssen":             C_TATA_05
+  "Tissent":                 C_TATA_06
+  "Allougoum":               C_TATA_07
+  "Issafen":                 C_TATA_08
+  "Akka Ighane":             C_TATA_09
+  "Tigzmirte":               C_TATA_10
+  "Ait Ouabelli":            C_TATA_11
+  "Smira - Foum Zguid":      C_TATA_12
+
+  # ═══ DP TIZNIT ═══
+  "Tiznit":                  C_TIZ_01
+  "Tafraout":                C_TIZ_02
+  "Aval Tiznit":             C_TIZ_03
+  "Amont Tiznit":            C_TIZ_04
+  "Talaint":                 C_TIZ_05
+  "Tizoughrane":             C_TIZ_06
+  "Douars Talaint":          C_TIZ_07
+  "Ammelne":                 C_TIZ_08
+  "Larbaa Sahel":            C_TIZ_09
+  "Aglou":                   C_TIZ_10
+  "Tighmi":                  C_TIZ_11
+  "Zaouia":                  C_TIZ_12
+  "Lmaadar Lakbir":          C_TIZ_13
+  "Anzi":                    C_TIZ_14
+  "Ras Mouka":               C_TIZ_15

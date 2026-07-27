@@ -37,12 +37,20 @@ Thumbs.db
 # ─── Streamlit ────────────────────────────────────────────
 .streamlit/secrets.toml
 
-# ─── Data (à ajuster en Partie 2) ─────────────────────────
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# Données ETL (ne pas commiter)
+data/raw/**/*.xlsx
+data/raw/**/*.csv
+data/bronze/
+data/silver/
+data/rejects/
+data/logs/
 
+# Garder la structure des dossiers vides
+!data/raw/**/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/rejects/.gitkeep
+!data/logs/.gitkeep
 # ─── Logs ─────────────────────────────────────────────────
 *.log
 logs/

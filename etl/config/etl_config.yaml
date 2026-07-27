@@ -27,3 +27,20 @@ sources:
     raw_folder: "indicateurs_reclamations"
     file_pattern: "*.xlsx"
     source_saisie: "excel_legacy"
+    
+    # Structure des onglets
+    onglet_recap: "Recap DP"          # onglet d'agrégation DP (sans centre)
+    
+    # Position des blocs dans les onglets (0-indexed)
+    bloc_indicateurs:
+      header_row: 0                   # ligne 1 = header
+      data_start_row: 1               # données commencent ligne 2
+      data_end_row: 22                # données finissent ligne 22 (exclusive = 22, donc jusqu'à ligne 22 inclus)
+    
+    bloc_reclamations:
+      header_row: 23                  # ligne 24 = header réclamations
+      data_start_row: 24              # données commencent ligne 25
+      data_end_row: 34                # données finissent ligne 34
+    
+    # Colonnes à ignorer (calculées dans Excel, pas de vraies données)
+    colonnes_ignorer_pattern: "recap"  # ex: "Récap 2025", "récap 2026"

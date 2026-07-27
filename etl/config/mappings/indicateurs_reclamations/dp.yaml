@@ -1,0 +1,21 @@
+# ═══════════════════════════════════════════════════════════════
+# Mapping fichiers Excel → Code DP
+# 
+# Le pattern est cherché dans le nom du fichier (insensible casse/accents)
+# ═══════════════════════════════════════════════════════════════
+
+fichiers_vers_dp:
+  # Pattern (dans le nom du fichier) → Code DP DWH
+
+  "Agadir":                DP_AGA
+  "Chtouka":               DP_CHT
+  "Chtouka Ait Baha":      DP_CHT
+  "INZEGANE":              DP_INZ
+  "Inezgane":              DP_INZ
+  "Inezgane Ait Melloul":  DP_INZ
+  "TAROUDANTE":            DP_TAR
+  "Taroudant":             DP_TAR
+  "TATA":                  DP_TATA
+  "Tata":                  DP_TATA
+  "TIZNIT":                DP_TIZ
+  "Tiznit":                DP_TIZ

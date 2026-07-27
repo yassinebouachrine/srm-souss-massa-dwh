@@ -1,0 +1,27 @@
+# ═══════════════════════════════════════════════════════════════
+# Mapping libellé Excel → code_type + cible de la valeur
+#
+# 'target' indique dans quelle colonne du fait mettre la valeur :
+#   - nb_reclamations       : compteur d'évènements
+#   - temps_moyen_coupure   : durée en heures
+#   - delai_moyen_traitement: durée en jours
+# ═══════════════════════════════════════════════════════════════
+
+libelles_vers_code:
+  # ─── Réclamations Eau (comptage) ───
+  "Fuite eau":                       {code: FUITE_EAU,       target: nb_reclamations}
+  "Manque de pression":              {code: MANQUE_PRESSION, target: nb_reclamations}
+  "Manque d'eau":                    {code: MANQUE_EAU,      target: nb_reclamations}
+  "Qualité":                         {code: QUALITE,         target: nb_reclamations}
+  "Réfection":                       {code: REFECTION,       target: nb_reclamations}
+
+  # ─── Incidents (comptage) ───
+  "Incidents sur réseau":            {code: INC_RESEAU,      target: nb_reclamations}
+  "Incidents causés par un tiers":   {code: INC_TIERS,       target: nb_reclamations}
+
+  # ─── QoS Traitement (durées) ───
+  "Temps moy coupure (h)":           {code: TEMPS_COUPURE,   target: temps_moyen_coupure}
+  "Délai moy traitement (j)":        {code: DELAI_TRAIT,     target: delai_moyen_traitement}
+
+  # ─── Fourre-tout Excel ───
+  "Autres":                          {code: AUTRES,          target: nb_reclamations}

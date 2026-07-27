@@ -53,11 +53,20 @@ CREATE TABLE dwh.dim_type_indicateur_dp (
 -- ─── DIM_TYPE_RECLAMATION ───
 DROP TABLE IF EXISTS dwh.dim_type_reclamation CASCADE;
 CREATE TABLE dwh.dim_type_reclamation (
-    id_type         SERIAL PRIMARY KEY,
-    code            VARCHAR(50) UNIQUE NOT NULL,
-    libelle         VARCHAR(200) NOT NULL,
-    categorie       VARCHAR(100)
+    id_type             SERIAL PRIMARY KEY,
+    code                VARCHAR(50) UNIQUE NOT NULL,
+    libelle             VARCHAR(200) NOT NULL,
+    categorie           VARCHAR(100),
+    est_personnalisee   BOOLEAN DEFAULT FALSE,       -- TRUE = ajouté dynamiquement par Streamlit
+    date_creation       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_dim_reclam_personnalisee ON dwh.dim_type_reclamation(est_personnalisee);
+CREATE INDEX idx_dim_reclam_categorie     ON dwh.dim_type_reclamation(categorie);
+
+COMMENT ON COLUMN dwh.dim_type_reclamation.est_personnalisee IS 
+    'TRUE si la réclamation a été ajoutée dynamiquement via Streamlit (catégorie "Reclamation_Divers")';
+
 
 COMMENT ON TABLE dwh.dim_temps IS 'Dimension temporelle transversale (partagée par tous les faits)';
 COMMENT ON TABLE dwh.dim_dp IS 'Dimension Direction Provinciale';

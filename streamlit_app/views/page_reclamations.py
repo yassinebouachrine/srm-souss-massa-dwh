@@ -28,12 +28,12 @@ CATEGORIE_LABELS = {
     "Reclamation_Divers": "Réclamations diverses",
 }
 
-# Ordre d'affichage des catégories
+# Ordre d'affichage des catégories standards (hors "Reclamation_Divers",
+# qui est rendue une seule fois, fusionnée avec la saisie personnalisée)
 ORDRE_CATEGORIES = [
     "Reclamation_Eau",
     "Incidents",
     "QoS_Traitement",
-    "Reclamation_Divers",   # section virtuelle (ajout personnalisé uniquement)
 ]
 
 
@@ -89,11 +89,74 @@ def render_reclamations():
         _render_reclam_history(id_province)
 
 
+def _render_column_headers():
+    """En-tête de colonnes 'TYPE DE RÉCLAMATION' / 'VALEUR', réutilisé partout."""
+    hc1, hc2 = st.columns([6, 3])
+    with hc1:
+        st.markdown(
+            "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>"
+            "TYPE DE RÉCLAMATION</div>",
+            unsafe_allow_html=True
+        )
+    with hc2:
+        st.markdown(
+            "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>"
+            "VALEUR</div>",
+            unsafe_allow_html=True
+        )
+
+
+def _render_reclamation_row(rec, vals):
+    """Affiche une ligne standard (libellé + champ Valeur) et alimente `vals`."""
+    code = rec["code_type"]
+    lib = rec["libelle_reclamation"]
+    est_duree = rec["est_duree"]
+    unite = "h" if "(h)" in lib else ("j" if "(j)" in lib else "")
+
+    col_lbl, col_val = st.columns([6, 3])
+    with col_lbl:
+        unite_html = (
+            f" <span style='color:#6B7280;font-size:0.78rem;'>({unite})</span>"
+            if unite else ""
+        )
+        st.markdown(
+            f"<div style='padding-top:0.5rem;'>"
+            f"<strong>{lib}</strong>{unite_html}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+    with col_val:
+        if est_duree:
+            val = st.number_input(
+                f"Val {code}",
+                min_value=0.0, value=0.0, step=0.1, format="%.2f",
+                key=f"val_{code}",
+                label_visibility="collapsed",
+            )
+        else:
+            val = st.number_input(
+                f"Val {code}",
+                min_value=0, value=0, step=1,
+                key=f"val_{code}",
+                label_visibility="collapsed",
+            )
+
+    vals[code] = {
+        "valeur": float(val),
+        "lib": lib,
+        "cat": rec["categorie_reclamation"],
+        "est_comptage": rec["est_comptage"],
+        "est_duree": est_duree,
+        "unite": unite,
+    }
+
+
 def _render_new_reclamation(user, id_province, code_province, province_name):
     """Formulaire aligné sur page_indicateurs :
        - une seule colonne 'Valeur' par ligne
        - unité affichée après le libellé (h/j)
-       - section 'Réclamations diverses' avec ajout personnalisé intégré
+       - section 'Réclamations diverses' affichée UNE SEULE FOIS,
+         regroupant le type standard 'Autres' + l'ajout personnalisé
     """
 
     st.markdown(render_notice(
@@ -131,6 +194,10 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
     for t in types:
         cats.setdefault(t["categorie_reclamation"] or "Autres", []).append(t)
 
+    # "Reclamation_Divers" est retirée des catégories standards : elle est
+    # rendue une seule fois, plus bas, fusionnée avec la saisie personnalisée.
+    divers_types = cats.pop("Reclamation_Divers", [])
+
     # Réordonnancement selon ORDRE_CATEGORIES
     cats_ordered = {k: cats[k] for k in ORDRE_CATEGORIES if k in cats}
     for k, v in cats.items():
@@ -144,79 +211,21 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
         vals = {}
         custom_reclams = []
 
-        # Initialisation du compteur (dans le form, on ne peut pas incrémenter,
-        # mais on peut LIRE la valeur en session)
         if "nb_custom_reclams" not in st.session_state:
             st.session_state["nb_custom_reclams"] = 1
 
-        # ── Boucle sur les catégories standards ──
+        # ── Boucle sur les catégories standards (hors Reclamation_Divers) ──
         for cat_code, recs in cats_ordered.items():
             cat_label = CATEGORIE_LABELS.get(cat_code, cat_code)
             st.markdown(render_form_category("FOLDER", cat_label), unsafe_allow_html=True)
-
-            # ── En-tête colonnes ──
-            hc1, hc2 = st.columns([6, 3])
-            with hc1:
-                st.markdown(
-                    "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>"
-                    "TYPE DE RÉCLAMATION</div>",
-                    unsafe_allow_html=True
-                )
-            with hc2:
-                st.markdown(
-                    "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>"
-                    "VALEUR</div>",
-                    unsafe_allow_html=True
-                )
-
-            # ── Lignes standards ──
+            _render_column_headers()
             for rec in recs:
-                code = rec["code_type"]
-                lib = rec["libelle_reclamation"]
-                est_duree = rec["est_duree"]
-                # unité déduite du libellé
-                unite = "h" if "(h)" in lib else ("j" if "(j)" in lib else "")
-
-                col_lbl, col_val = st.columns([6, 3])
-                with col_lbl:
-                    unite_html = (
-                        f" <span style='color:#6B7280;font-size:0.78rem;'>({unite})</span>"
-                        if unite else ""
-                    )
-                    st.markdown(
-                        f"<div style='padding-top:0.5rem;'>"
-                        f"<strong>{lib}</strong>{unite_html}"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
-                with col_val:
-                    # Un seul champ Valeur - format décimal pour durée, entier pour comptage
-                    if est_duree:
-                        val = st.number_input(
-                            f"Val {code}",
-                            min_value=0.0, value=0.0, step=0.1, format="%.2f",
-                            key=f"val_{code}",
-                            label_visibility="collapsed",
-                        )
-                    else:
-                        val = st.number_input(
-                            f"Val {code}",
-                            min_value=0, value=0, step=1,
-                            key=f"val_{code}",
-                            label_visibility="collapsed",
-                        )
-
-                vals[code] = {
-                    "valeur": float(val),
-                    "lib": lib,
-                    "cat": cat_code,
-                    "est_comptage": rec["est_comptage"],
-                    "est_duree": est_duree,
-                    "unite": unite,
-                }
+                _render_reclamation_row(rec, vals)
 
         # ═══════════════════════════════════════════════════════════
-        # ── Section "Réclamations diverses" (ajout personnalisé) ──
+        # ── Section "Réclamations diverses" — UNE SEULE FOIS ──
+        # Regroupe le(s) type(s) standard(s) (ex: "Autres") ET la saisie
+        # personnalisée sous un unique en-tête.
         # ═══════════════════════════════════════════════════════════
         st.markdown(
             render_form_category("FOLDER", CATEGORIE_LABELS["Reclamation_Divers"]),
@@ -225,7 +234,7 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
 
         st.markdown(
             "<div style='background:#F0F9FF;padding:0.75rem;border-left:3px solid #0EA5E9;"
-            "border-radius:4px;margin:0.25rem 0 0.75rem;'>"
+            "border-radius:4px;margin:0.75rem 0 0.75rem;'>"
             "<div style='font-weight:600;color:#0369A1;font-size:0.85rem;'>"
             "Réclamations personnalisées</div>"
             "<div style='font-size:0.78rem;color:#075985;margin-top:0.15rem;'>"
@@ -235,7 +244,6 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
             unsafe_allow_html=True
         )
 
-        # En-tête colonnes personnalisées
         hc1, hc2 = st.columns([6, 3])
         with hc1:
             st.markdown(
@@ -295,12 +303,10 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
                 type="primary",
             )
 
-        # ── Traitement du bouton "Ajouter" (dans le form) ──
         if add_custom:
             st.session_state["nb_custom_reclams"] += 1
             st.rerun()
 
-        # ── Traitement Brouillon / Soumission ──
         if draft or submit:
             has_standard = any(v["valeur"] > 0 for v in vals.values())
             has_custom = len(custom_reclams) > 0
@@ -312,12 +318,11 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
                 status = "brouillon" if draft else "soumis"
                 records = []
 
-                # ── Types standards ──
+                # ── Types standards (y compris "Autres") ──
                 for code, v in vals.items():
                     if v["valeur"] <= 0:
                         continue
 
-                    # Répartition intelligente selon nature
                     nb_reclam   = int(v["valeur"]) if v["est_comptage"] else 0
                     temps_coup  = v["valeur"] if (v["est_duree"] and v["unite"] == "h") else 0.0
                     delai_trait = v["valeur"] if (v["est_duree"] and v["unite"] == "j") else 0.0
@@ -389,7 +394,6 @@ def _render_new_reclamation(user, id_province, code_province, province_name):
                             f"(dont {len(custom_reclams)} personnalisée(s))."
                         )
 
-                    # Reset du compteur
                     st.session_state["nb_custom_reclams"] = 1
 
                 except Exception as e:

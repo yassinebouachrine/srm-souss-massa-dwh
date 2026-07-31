@@ -671,10 +671,73 @@ def get_province_full_stats(annee=None, mois=None, role_view=None):
 
 
 
-def get_activity_timeline(annee=None, mois=None, id_province=None, role_view=None):
+# def get_activity_timeline(annee=None, mois=None, id_province=None, role_view=None):
+#     """
+#     Récupère l'activité mensuelle par province.
+#     Applique les mêmes filtres que le dashboard.
+#     """
+#     conditions = []
+#     params = []
+
+#     if annee:
+#         conditions.append("annee = %s")
+#         params.append(annee)
+#     if mois:
+#         conditions.append("mois = %s")
+#         params.append(mois)
+#     if id_province:
+#         conditions.append("id_province = %s")
+#         params.append(id_province)
+
+#     if role_view == "admin_regional":
+#         conditions.append("statut IN ('valide_dp', 'valide_regional', 'rejete_regional')")
+
+#     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+#     result = execute_query(
+#         f"""
+#         SELECT
+#             nom_province,
+#             id_province,
+#             annee,
+#             mois,
+#             SUM(nb_indic) AS nb_indicateurs,
+#             SUM(nb_reclam) AS nb_reclamations,
+#             SUM(nb_indic + nb_reclam) AS nb_total
+#         FROM (
+#             SELECT
+#                 nom_province, id_province, annee, mois,
+#                 COUNT(*) AS nb_indic,
+#                 0 AS nb_reclam
+#             FROM app_staging.staging_indicateurs_dp
+#             {where_clause}
+#             GROUP BY nom_province, id_province, annee, mois
+
+#             UNION ALL
+
+#             SELECT
+#                 nom_province, id_province, annee, mois,
+#                 0 AS nb_indic,
+#                 COUNT(*) AS nb_reclam
+#             FROM app_staging.staging_reclamations_dp
+#             {where_clause}
+#             GROUP BY nom_province, id_province, annee, mois
+#         ) combined
+#         GROUP BY nom_province, id_province, annee, mois
+#         ORDER BY annee, mois, nom_province
+#         """,
+#         tuple(params + params) if params else None,
+#     )
+#     return result or []
+
+def get_activity_timeline(annee=None, mois=None, id_province=None, role_view=None, statut=None):
     """
     Récupère l'activité mensuelle par province.
     Applique les mêmes filtres que le dashboard.
+    
+    Args:
+        statut: Filtrer sur un statut précis (ex: 'valide_regional').
+                Si renseigné, il prime sur le filtre role_view.
     """
     conditions = []
     params = []
@@ -689,7 +752,11 @@ def get_activity_timeline(annee=None, mois=None, id_province=None, role_view=Non
         conditions.append("id_province = %s")
         params.append(id_province)
 
-    if role_view == "admin_regional":
+    # ✅ NOUVEAU : filtre par statut explicite (ex: 'valide_regional')
+    if statut:
+        conditions.append("statut = %s")
+        params.append(statut)
+    elif role_view == "admin_regional":
         conditions.append("statut IN ('valide_dp', 'valide_regional', 'rejete_regional')")
 
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
@@ -816,3 +883,67 @@ def get_available_years_dashboard():
         """
     )
     return [r["annee"] for r in (result or [])]
+
+
+
+def get_dp_completion_and_activity(id_province=None, role_view=None):
+    """
+    Retourne pour chaque DP :
+    - types_indic_saisis : nb de types d'indicateurs distincts saisis
+    - types_reclam_saisis : nb de types de réclamations distincts saisis
+    - saisies_mois_courant : nb de saisies dans le mois courant (année + mois actuels)
+    """
+    conditions = []
+    params = []
+
+    if role_view == "admin_regional":
+        conditions.append("statut IN ('valide_dp', 'valide_regional', 'rejete_regional')")
+
+    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+    result = execute_query(
+        f"""
+        SELECT
+            p.id_province,
+            COALESCE(indic.types_distincts, 0) AS types_indic_saisis,
+            COALESCE(reclam.types_distincts, 0) AS types_reclam_saisis,
+            COALESCE(indic.saisies_mois_courant, 0) + COALESCE(reclam.saisies_mois_courant, 0) AS saisies_mois_courant
+        FROM app_staging.ref_province p
+        LEFT JOIN (
+            SELECT
+                id_province,
+                COUNT(DISTINCT code_indicateur) AS types_distincts,
+                COUNT(*) FILTER (WHERE annee = EXTRACT(YEAR FROM CURRENT_DATE) AND mois = EXTRACT(MONTH FROM CURRENT_DATE)) AS saisies_mois_courant
+            FROM app_staging.staging_indicateurs_dp
+            {where_clause}
+            GROUP BY id_province
+        ) indic ON p.id_province = indic.id_province
+        LEFT JOIN (
+            SELECT
+                id_province,
+                COUNT(DISTINCT code_type) AS types_distincts,
+                COUNT(*) FILTER (WHERE annee = EXTRACT(YEAR FROM CURRENT_DATE) AND mois = EXTRACT(MONTH FROM CURRENT_DATE)) AS saisies_mois_courant
+            FROM app_staging.staging_reclamations_dp
+            {where_clause}
+            GROUP BY id_province
+        ) reclam ON p.id_province = reclam.id_province
+        {f"WHERE p.id_province = {id_province}" if id_province else ""}
+        ORDER BY p.id_province
+        """,
+        tuple(params) if params else None,
+    )
+    return result or []
+
+
+def get_reference_totals():
+    """Retourne le nombre total de types actifs dans les référentiels."""
+    indic = execute_query(
+        "SELECT COUNT(*) as cnt FROM app_staging.ref_type_indicateur WHERE est_actif = TRUE"
+    )
+    reclam = execute_query(
+        "SELECT COUNT(*) as cnt FROM app_staging.ref_type_reclamation WHERE est_actif = TRUE"
+    )
+    return {
+        "total_types_indic": indic[0]["cnt"] if indic else 21,
+        "total_types_reclam": reclam[0]["cnt"] if reclam else 9,
+    }

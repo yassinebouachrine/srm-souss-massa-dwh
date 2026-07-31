@@ -12,6 +12,9 @@ from db.queries import (
     get_dp_activity_summary,
     get_available_years_dashboard,
     get_staging_lots,
+
+    get_dp_completion_and_activity,   
+    get_reference_totals,   
 )
 from config.provinces import PROVINCES
 from utils.helpers import format_datetime, get_mois_name, MOIS_FR
@@ -371,8 +374,12 @@ def _render_timeline_chart(annee_filter, mois_filter, id_province, role_view):
                                      "Suivi de l'activité de saisie dans le temps"),
                 unsafe_allow_html=True)
 
+    # data = get_activity_timeline(annee=annee_filter, mois=mois_filter,
+    #                               id_province=id_province, role_view=role_view)
+
     data = get_activity_timeline(annee=annee_filter, mois=mois_filter,
-                                  id_province=id_province, role_view=role_view)
+                                id_province=id_province, role_view=role_view,
+                                 statut='valide_regional')
 
     if not data:
         st.markdown(render_empty("INBOX", "Aucune donnée",
@@ -429,8 +436,124 @@ def _render_timeline_chart(annee_filter, mois_filter, id_province, role_view):
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
 
+# def _render_activity_summary(annee_filter, mois_filter, id_province, role_view):
+#     """Vue globale d'activité par DP avec détection des inactives."""
+#     subtitle = ("Participation des DP (données validées par admins DP)"
+#                 if role_view == "admin_regional"
+#                 else "Suivi de la participation de chaque province")
+
+#     st.markdown(render_section_open("État d'activité par DP", "ACTIVITY",
+#                                      subtitle),
+#                 unsafe_allow_html=True)
+
+#     data = get_dp_activity_summary(annee=annee_filter, mois=mois_filter,
+#                                     id_province=id_province, role_view=role_view)
+
+#     if not data:
+#         st.markdown(render_empty("INBOX", "Aucune donnée"),
+#                     unsafe_allow_html=True)
+#         st.markdown(render_section_close(), unsafe_allow_html=True)
+#         return
+
+#     now = datetime.now()
+#     rows = []
+#     dp_inactives = []
+
+#     for dp in data:
+#         nb_total = dp.get("nb_total", 0)
+#         derniere_saisie = dp.get("derniere_saisie")
+
+#         if nb_total == 0:
+#             statut = "🔴 Aucune saisie"
+#             dp_inactives.append(dp["nom_province"])
+#         else:
+#             if derniere_saisie:
+#                 jours_depuis = (now - derniere_saisie).days
+#                 if jours_depuis > 60:
+#                     statut = f"🟠 Inactif depuis {jours_depuis}j"
+#                 elif jours_depuis > 30:
+#                     statut = f"🟡 {jours_depuis}j sans saisie"
+#                 else:
+#                     statut = f"🟢 Actif"
+#             else:
+#                 statut = "🔴 Aucune saisie"
+
+#         rows.append({
+#             "Province": dp["nom_province"],
+#             "Indicateurs": dp.get("nb_indicateurs", 0),
+#             "Réclamations": dp.get("nb_reclamations", 0),
+#             "Total saisies": nb_total,
+#             "Validés": dp.get("nb_valides", 0),
+#             "En attente": dp.get("nb_soumis", 0),
+#             "Dernière saisie": format_datetime(derniere_saisie) if derniere_saisie else "Jamais",
+#             "Statut": statut,
+#         })
+
+#     df = pd.DataFrame(rows)
+#     st.dataframe(df, use_container_width=True, hide_index=True)
+
+#     # Alerte si DP inactives (seulement si aucun filtre restrictif)
+#     if dp_inactives and not id_province:
+#         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+#         periode_str = ""
+#         if annee_filter or mois_filter:
+#             parts = []
+#             if mois_filter:
+#                 parts.append(MOIS_FR[mois_filter])
+#             if annee_filter:
+#                 parts.append(str(annee_filter))
+#             periode_str = f" pour {' '.join(parts)}"
+
+#         st.markdown(
+#             f"<div style='background:#FEF2F2;border-left:3px solid #DC2626;"
+#             f"padding:0.75rem 1rem;border-radius:6px;font-size:0.85rem;color:#991B1B;'>"
+#             f"<strong>Alerte :</strong> {len(dp_inactives)} DP sans aucune saisie"
+#             f"{periode_str} : <strong>{', '.join(dp_inactives)}</strong>"
+#             f"</div>",
+#             unsafe_allow_html=True
+#         )
+
+#     # Graphique en barres
+#     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+
+#     fig = go.Figure()
+
+#     fig.add_trace(go.Bar(
+#         name="Indicateurs",
+#         x=df["Province"],
+#         y=df["Indicateurs"],
+#         marker=dict(color="#3B82F6"),
+#         text=df["Indicateurs"],
+#         textposition="outside",
+#         textfont=dict(size=11),
+#     ))
+#     fig.add_trace(go.Bar(
+#         name="Réclamations",
+#         x=df["Province"],
+#         y=df["Réclamations"],
+#         marker=dict(color="#10B981"),
+#         text=df["Réclamations"],
+#         textposition="outside",
+#         textfont=dict(size=11),
+#     ))
+
+#     fig.update_layout(
+#         barmode="group",
+#         height=350,
+#         xaxis_title="",
+#         yaxis_title="Nombre de saisies",
+#         legend=dict(orientation="h", yanchor="bottom", y=-0.25,
+#                     xanchor="center", x=0.5),
+#         margin=dict(l=20, r=20, t=20, b=60),
+#     )
+#     fig = apply_chart_theme(fig)
+#     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+
+#     st.markdown(render_section_close(), unsafe_allow_html=True)
+
+
 def _render_activity_summary(annee_filter, mois_filter, id_province, role_view):
-    """Vue globale d'activité par DP avec détection des inactives."""
+    """Vue globale d'activité par DP avec détection basée sur le mois courant."""
     subtitle = ("Participation des DP (données validées par admins DP)"
                 if role_view == "admin_regional"
                 else "Suivi de la participation de chaque province")
@@ -439,8 +562,18 @@ def _render_activity_summary(annee_filter, mois_filter, id_province, role_view):
                                      subtitle),
                 unsafe_allow_html=True)
 
+    # 1. Stats de la période filtrée
     data = get_dp_activity_summary(annee=annee_filter, mois=mois_filter,
                                     id_province=id_province, role_view=role_view)
+
+    # 2. Complétude (types saisis / total) — indépendante des filtres période
+    completion_data = get_dp_completion_and_activity(id_province=id_province, role_view=role_view)
+    completion_by_province = {d["id_province"]: d for d in completion_data}
+
+    # 3. Totaux de référence
+    ref_totals = get_reference_totals()
+    total_types_indic = ref_totals["total_types_indic"]
+    total_types_reclam = ref_totals["total_types_reclam"]
 
     if not data:
         st.markdown(render_empty("INBOX", "Aucune donnée"),
@@ -450,63 +583,84 @@ def _render_activity_summary(annee_filter, mois_filter, id_province, role_view):
 
     now = datetime.now()
     rows = []
-    dp_inactives = []
+    dp_inactifs_mois = []
 
     for dp in data:
         nb_total = dp.get("nb_total", 0)
         derniere_saisie = dp.get("derniere_saisie")
 
+        # Données de complétude
+        comp = completion_by_province.get(dp["id_province"], {})
+        types_indic_saisis = comp.get("types_indic_saisis", 0)
+        types_reclam_saisis = comp.get("types_reclam_saisis", 0)
+
+        # ═══════════════════════════════════════════════════
+        # LOGIQUE ACTIVITÉ : basée sur la date de dernière saisie
+        # ═══════════════════════════════════════════════════
         if nb_total == 0:
             statut = "🔴 Aucune saisie"
-            dp_inactives.append(dp["nom_province"])
-        else:
-            if derniere_saisie:
-                jours_depuis = (now - derniere_saisie).days
-                if jours_depuis > 60:
-                    statut = f"🟠 Inactif depuis {jours_depuis}j"
-                elif jours_depuis > 30:
-                    statut = f"🟡 {jours_depuis}j sans saisie"
-                else:
-                    statut = f"🟢 Actif"
+            dp_inactifs_mois.append(dp["nom_province"])
+        elif (derniere_saisie 
+              and derniere_saisie.year != 1900
+              and derniere_saisie.year == now.year 
+              and derniere_saisie.month == now.month):
+            # Dernière saisie = ce mois-ci → ACTIF
+            statut = "🟢 Actif ce mois-ci"
+        elif derniere_saisie and derniere_saisie.year != 1900:
+            # Dernière saisie = mois précédent ou plus ancien
+            mois_ecart = (now.year - derniere_saisie.year) * 12 + (now.month - derniere_saisie.month)
+            if mois_ecart <= 0:
+                statut = "🟢 Actif ce mois-ci"
+            elif mois_ecart == 1:
+                statut = "🟡 Inactif ce mois-ci (saisie le mois dernier)"
             else:
-                statut = "🔴 Aucune saisie"
+                statut = f"🟠 Inactif depuis {mois_ecart} mois"
+        else:
+            statut = "🔴 Aucune saisie"
+            dp_inactifs_mois.append(dp["nom_province"])
 
         rows.append({
             "Province": dp["nom_province"],
-            "Indicateurs": dp.get("nb_indicateurs", 0),
-            "Réclamations": dp.get("nb_reclamations", 0),
-            "Total saisies": nb_total,
+            "Indicateurs": dp.get("nb_indicateurs", 0),      # gardé pour le graphique
+            "Réclamations": dp.get("nb_reclamations", 0),  # gardé pour le graphique
+            "Total saisies": nb_total,                       # gardé pour référence interne
             "Validés": dp.get("nb_valides", 0),
             "En attente": dp.get("nb_soumis", 0),
-            "Dernière saisie": format_datetime(derniere_saisie) if derniere_saisie else "Jamais",
+            "Complétude Indic": f"{types_indic_saisis}/{total_types_indic}",
+            "Complétude Réclam": f"{types_reclam_saisis}/{total_types_reclam}",
+            "Dernière saisie": format_datetime(derniere_saisie) if derniere_saisie and derniere_saisie.year != 1900 else "Jamais",
             "Statut": statut,
         })
 
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Alerte si DP inactives (seulement si aucun filtre restrictif)
-    if dp_inactives and not id_province:
+    # ═══════════════════════════════════════════════════
+    # AFFICHAGE DU TABLEAU (sans les 3 colonnes demandées)
+    # ═══════════════════════════════════════════════════
+    cols_a_masquer = ["Indicateurs", "Réclamations", "Total saisies"]
+    df_display = df.drop(columns=cols_a_masquer, errors='ignore')
+    st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # ═══════════════════════════════════════════════════
+    # ALERTE : DP sans saisie ce mois-ci
+    # ═══════════════════════════════════════════════════
+    if dp_inactifs_mois and not id_province:
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        periode_str = ""
-        if annee_filter or mois_filter:
-            parts = []
-            if mois_filter:
-                parts.append(MOIS_FR[mois_filter])
-            if annee_filter:
-                parts.append(str(annee_filter))
-            periode_str = f" pour {' '.join(parts)}"
+        mois_nom = MOIS_FR[now.month]
 
         st.markdown(
             f"<div style='background:#FEF2F2;border-left:3px solid #DC2626;"
             f"padding:0.75rem 1rem;border-radius:6px;font-size:0.85rem;color:#991B1B;'>"
-            f"<strong>Alerte :</strong> {len(dp_inactives)} DP sans aucune saisie"
-            f"{periode_str} : <strong>{', '.join(dp_inactives)}</strong>"
+            f"<strong>Alerte :</strong> {len(dp_inactifs_mois)} DP sans saisie en "
+            f"<strong>{mois_nom} {now.year}</strong> : "
+            f"<strong>{', '.join(dp_inactifs_mois)}</strong>"
             f"</div>",
             unsafe_allow_html=True
         )
 
-    # Graphique en barres
+    # ═══════════════════════════════════════════════════
+    # GRAPHIQUE EN BARRES (utilise df complet)
+    # ═══════════════════════════════════════════════════
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
     fig = go.Figure()

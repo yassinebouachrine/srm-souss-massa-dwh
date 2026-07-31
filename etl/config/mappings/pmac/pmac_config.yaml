@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════
+# Configuration métier PMAC — Mappings voie et qualité
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Détection de la voie depuis le HEADER de colonne ───
+# Priorité 1 : matcher par mot-clé dans le libellé
+voie_detection:
+  pression:
+    keywords: 
+      - "pression"
+      - "press"
+      - "pressure"
+      - "aval"          # pression aval (modulateur)
+      - "amont"         # pression amont (modulateur)
+      - "inlet"         # pression entrée (anglais)
+      - "outlet"        # pression sortie (anglais)
+    unite_default: "m"
+  debit:
+    keywords: 
+      - "debit"
+      - "débit"
+      - "flow"
+      - "deb "          # abréviation
+      - "entree"
+      - "entrée"
+      - "sortie"
+      - "sortie"
+      - "ent "          # ENT ANZA70
+      - "sor"           # SOR.10000
+      - "st "           # ST ANZA70
+      - "essalam"       # ESSALAM350
+      - "dessal"        # DESSALMET
+      - "adrar"         # S ADRARE
+      - "ahouda"        # S AHOUDA
+    unite_default: "m3/hr"
+  index:
+    keywords: 
+      - "index"
+      - "v_index"
+      - "compteur"
+    unite_default: "m3"
+  volume:
+    keywords: 
+      - "volume"
+      - "vol"
+    unite_default: "m3"
+
+# ─── Détection par UNITÉ (fallback si libellé non reconnu) ───
+# Priorité 2 : matcher par unité si libellé ambigu (ex: "01", "02")
+unite_to_voie:
+  "m":       "PRESSION"
+  "bar":     "PRESSION"
+  "mbar":    "PRESSION"
+  "cum/hr":  "DEBIT"
+  "m3/hr":   "DEBIT"
+  "m3/h":    "DEBIT"
+  "l/s":     "DEBIT"
+  "cuft/hr": "DEBIT"        # ← AJOUTER (pieds cubes/heure, unité anglaise)
+  "ft3/hr":  "DEBIT"        # ← BONUS (autre notation possible)
+  "m3":      "INDEX"
+  "cum":     "INDEX"
+
+# ─── Détection amont/aval depuis le libellé ───
+# Utilisé pour flagger la position d'un capteur sur un modulateur
+amont_aval_detection:
+  amont_keywords:
+    - "amont"
+    - "inlet"
+    - "entree"
+    - "entrée"
+    - "ent "
+    - "in "
+  aval_keywords:
+    - "aval"
+    - "outlet"
+    - "sortie"
+    - "sor "
+    - "st "
+    - "out "
+
+# ─── Règles de qualité des données ───
+qualite_regles:
+  pression:
+    min_normal: 0
+    max_normal: 200
+    max_absolu: 500
+  debit:
+    min_normal: 0
+    max_normal: 5000
+    max_absolu: 50000
+  index:
+    min_normal: 0
+    max_normal: 999999999999
+    max_absolu: 999999999999

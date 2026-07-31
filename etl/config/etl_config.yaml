@@ -53,3 +53,47 @@ sources:
     table_reclamations: "staging_reclamations_dp"
     # Filtre : uniquement les lots validés au niveau régional
     statut_a_charger: "valide_regional"
+
+
+
+
+  pmac:
+    source_saisie: "pmac"
+    
+    # ─── Dossiers sources ───
+    # Environnement DEV (local)
+    raw_folders:
+      - path: "data/raw/Dossier Export Données PMAC"
+        type: "LIVE"
+        source_code: "PMAC_LIVE"
+      # Décommenter pour prod :
+      # - path: "\\\\192.168.1.41\\Export"
+      #   type: "LIVE"
+      #   source_code: "PMAC_LIVE"
+      # - path: "D:\\ARCHIVE_EXPORT"
+      #   type: "ARCHIVE"
+      #   source_code: "PMAC_ARCHIVE"
+    
+    # ─── Patterns fichiers ───
+    file_pattern: "*.csv"
+    
+    # Encodages à essayer dans l'ordre (auto-detect)
+    encodings_fallback:
+      - "utf-8"
+      - "cp1252"
+      - "latin-1"
+    
+    # ─── Filtres exclusion ───
+    ignore_patterns:      # dans le nom du fichier (insensible casse)
+      - "_ALM"
+      - "_LOG"
+      - "~$"              # fichiers Excel temporaires
+    ignore_folders:       # dans le chemin
+      - "BACKUP"
+      - "LOG"
+    
+    # ─── Détection type fichier ───
+    inx_pattern: "_INX"   # si présent dans le nom → parser INX
+    
+    # ─── Suffixe pour parquet bronze ───
+    bronze_folder: "pmac"

@@ -240,3 +240,75 @@ def get_staging_centre_to_dwh_centre_mapping() -> dict:
         JOIN dwh.dim_centre dc ON dc.code_centre = rc.code_centre
     """)
     return dict(zip(df["id_centre"], df["code_centre"]))
+
+
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# MAPPINGS POUR ÉTOILE B — PMAC / PCWIN
+# ═══════════════════════════════════════════════════════════════
+
+@lru_cache(maxsize=1)
+def get_point_mesure_mapping() -> dict:
+    """
+    Retourne {id_pmac: id_point_mesure} depuis dwh.dim_point_mesure.
+    
+    Ex: {"0007": 15, "0416": 42, "PCWIN_57": 100}
+    """
+    df = read_sql("SELECT id_point_mesure, id_pmac FROM dwh.dim_point_mesure")
+    return dict(zip(df["id_pmac"], df["id_point_mesure"]))
+
+
+@lru_cache(maxsize=1)
+def get_source_mesure_mapping() -> dict:
+    """
+    Retourne {code_source: id_source_mesure} depuis dwh.dim_source_mesure.
+    
+    Ex: {"PMAC_LIVE": 1, "PMAC_ARCHIVE": 2, "PCWIN": 3}
+    """
+    df = read_sql("SELECT id_source_mesure, code_source FROM dwh.dim_source_mesure")
+    return dict(zip(df["code_source"], df["id_source_mesure"]))
+
+
+@lru_cache(maxsize=1)
+def get_point_mesure_details() -> dict:
+    """
+    Retourne les attributs complets d'un point (utile pour cross-check).
+    
+    Ex: {"0007": {"est_modulateur": False, "est_reservoir": False, ...}}
+    """
+    df = read_sql("""
+        SELECT id_pmac, est_pression, est_debit, est_reservoir, 
+               est_modulateur, est_amont, est_aval
+        FROM dwh.dim_point_mesure
+    """)
+    return {
+        row["id_pmac"]: {
+            "est_pression":   row["est_pression"],
+            "est_debit":      row["est_debit"],
+            "est_reservoir":  row["est_reservoir"],
+            "est_modulateur": row["est_modulateur"],
+            "est_amont":      row["est_amont"],
+            "est_aval":       row["est_aval"],
+        }
+        for _, row in df.iterrows()
+    }
+
+
+def clear_cache_pmac():
+    """Vide les caches PMAC (à appeler après un reload de dimensions)."""
+    get_point_mesure_mapping.cache_clear()
+    get_source_mesure_mapping.cache_clear()
+    get_point_mesure_details.cache_clear()
+    logger.debug("🔄 Cache PMAC/PCWIN vidé")
+
+
+def datetime_to_id_temps(dt) -> int:
+    """
+    Convertit un datetime en id_temps (YYYYMMDD).
+    Ex: 2026-07-01 08:30:00 → 20260701
+    """
+    if dt is None:
+        return None
+    return int(pd.to_datetime(dt).strftime("%Y%m%d"))

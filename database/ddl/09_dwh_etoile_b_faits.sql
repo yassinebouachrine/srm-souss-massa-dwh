@@ -24,42 +24,38 @@ DROP TABLE IF EXISTS dwh.fait_mesure_temps_reel CASCADE;
 CREATE TABLE dwh.fait_mesure_temps_reel (
     id_fait                 BIGSERIAL PRIMARY KEY,
     
-    -- ─── Clés de dimension (conforme au schéma constellation) ───
-    id_temps                INTEGER NOT NULL 
-                            REFERENCES dwh.dim_temps(id_temps),
-    id_etage                INTEGER NOT NULL DEFAULT 0
-                            REFERENCES dwh.dim_etage(id_etage),
-    id_secteur              INTEGER NOT NULL DEFAULT 0
-                            REFERENCES dwh.dim_secteur(id_secteur),
-    id_point_mesure         INTEGER NOT NULL 
-                            REFERENCES dwh.dim_point_mesure(id_point_mesure),
-    id_source_mesure        INTEGER NOT NULL 
-                            REFERENCES dwh.dim_source_mesure(id_source_mesure),
+    -- ─── Clés de dimension ───
+    id_temps                INTEGER NOT NULL REFERENCES dwh.dim_temps(id_temps),
+    id_etage                INTEGER NOT NULL DEFAULT 0 REFERENCES dwh.dim_etage(id_etage),
+    id_secteur              INTEGER NOT NULL DEFAULT 0 REFERENCES dwh.dim_secteur(id_secteur),
+    id_point_mesure         INTEGER NOT NULL REFERENCES dwh.dim_point_mesure(id_point_mesure),
+    id_source_mesure        INTEGER NOT NULL REFERENCES dwh.dim_source_mesure(id_source_mesure),
     
-    -- ─── Timestamp précis (au niveau minute) ───
-    heure                   TIMESTAMP NOT NULL,           -- respect schéma : "Heure datetime"
+    -- ─── Timestamp précis ───
+    heure                   TIMESTAMP NOT NULL,
     
-    -- ─── Mesures (issues du schéma constellation) ───
-    index_compteur          DOUBLE PRECISION,             -- Index cumulatif (m3)
-    pression_bar            DOUBLE PRECISION,             -- Pression (m ou bar)
-    pression_amont_bar      DOUBLE PRECISION,             -- Pression amont (modulateur)
-    pression_aval_bar       DOUBLE PRECISION,             -- Pression aval (modulateur)
-    debit_m3_h              DOUBLE PRECISION,             -- Débit instantané
-    volume_15min            DOUBLE PRECISION,             -- Volume sur période courte
-    qualite_donnees         VARCHAR(20) DEFAULT 'GOOD',   -- GOOD|SUSPECT|BAD
+    -- ─── Mesures ───
+    index_compteur          DOUBLE PRECISION,
+    pression_bar            DOUBLE PRECISION,
+    pression_amont_bar      DOUBLE PRECISION,
+    pression_aval_bar       DOUBLE PRECISION,
+    debit_m3_h              DOUBLE PRECISION,
+    volume_15min            DOUBLE PRECISION,
+    qualite_donnees         VARCHAR(20) DEFAULT 'GOOD',
     
-    -- ─── Métadonnées techniques (extras utiles) ───
-    voie                    VARCHAR(20) NOT NULL,         -- PRESSION|DEBIT|INDEX|VOLUME
-    unite                   VARCHAR(20),                  -- "m", "bar", "m3/hr", "m3"
-    fichier_source          VARCHAR(255),                 -- nom du CSV d'origine
-    canal_source            VARCHAR(50),                  -- ex "01", "02_INX"
+    -- ─── Métadonnées techniques ───
+    voie                    VARCHAR(20) NOT NULL,         -- PRESSION | DEBIT | INDEX | VOLUME
+    canal                   VARCHAR(50) NOT NULL,         -- ← AJOUTÉ : "PRESSION_01", "DEBIT_02", "INDEX_03"
+    unite                   VARCHAR(20),
+    fichier_source          VARCHAR(255),
+    canal_source            VARCHAR(50),
     date_chargement         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    -- ─── Contrainte unique pour idempotence UPSERT ───
-    CONSTRAINT uq_fait_tr UNIQUE (id_point_mesure, heure, voie)
+    -- ─── Contrainte unique CORRIGÉE ───
+    CONSTRAINT uq_fait_tr UNIQUE (id_point_mesure, heure, voie, canal)
 );
 
--- Index pour requêtes analytiques
+-- Index (inchangés + 1 nouveau)
 CREATE INDEX idx_fait_tr_temps     ON dwh.fait_mesure_temps_reel(id_temps);
 CREATE INDEX idx_fait_tr_etage     ON dwh.fait_mesure_temps_reel(id_etage);
 CREATE INDEX idx_fait_tr_secteur   ON dwh.fait_mesure_temps_reel(id_secteur);
@@ -67,9 +63,11 @@ CREATE INDEX idx_fait_tr_point     ON dwh.fait_mesure_temps_reel(id_point_mesure
 CREATE INDEX idx_fait_tr_source    ON dwh.fait_mesure_temps_reel(id_source_mesure);
 CREATE INDEX idx_fait_tr_heure     ON dwh.fait_mesure_temps_reel(heure);
 CREATE INDEX idx_fait_tr_voie      ON dwh.fait_mesure_temps_reel(voie);
+CREATE INDEX idx_fait_tr_canal     ON dwh.fait_mesure_temps_reel(canal);   -- ← NOUVEAU
 CREATE INDEX idx_fait_tr_qualite   ON dwh.fait_mesure_temps_reel(qualite_donnees) 
                                     WHERE qualite_donnees != 'GOOD';
 
+                                    
 COMMENT ON TABLE dwh.fait_mesure_temps_reel IS 
     'Mesures capteurs granularité fine (10min/15min/instantané) — PMAC + PCWIN';
 COMMENT ON COLUMN dwh.fait_mesure_temps_reel.id_etage IS 

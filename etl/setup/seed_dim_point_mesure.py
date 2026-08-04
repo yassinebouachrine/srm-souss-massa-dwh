@@ -93,7 +93,7 @@ def _clean_float(v):
 
 def load_referentiel_excel() -> pd.DataFrame:
     """Charge le fichier Excel référentiel PMAC."""
-    filepath = get_path("raw") / "referentiels" / REFERENTIEL_FILENAME
+    filepath = get_path("raw") / "referentiels" / "etoile_b" / REFERENTIEL_FILENAME
     
     if not filepath.exists():
         raise FileNotFoundError(

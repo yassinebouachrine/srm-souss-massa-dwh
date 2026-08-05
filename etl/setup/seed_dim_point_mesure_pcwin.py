@@ -63,7 +63,10 @@ def transform_referentiel(df_raw: pd.DataFrame) -> pd.DataFrame:
     df["id_pmac"]       = "PCWIN_" + df["station_id"].astype(str)
     df["nom_point"]     = df["Nom_Station"].astype(str).str.strip()
     df["station_pcwin"] = df["Nom_Station"].astype(str).str.strip()
-    df["groupe_mesure"] = df["Groupe_Mesure"].astype(str).str.strip()
+    df["groupe_mesure"] = df["Groupe_Mesure"].apply(
+    lambda x: None if pd.isna(x) or str(x).strip().lower() in ("", "nan") 
+    else str(x).strip()
+)
 
     # Détection amont/aval par mots-clés
     df["est_amont"] = df["nom_point"].str.contains("amont|AMONT", case=False, na=False, regex=True)

@@ -97,3 +97,32 @@ sources:
     
     # ─── Suffixe pour parquet bronze ───
     bronze_folder: "pmac"
+
+
+
+
+
+  pcwin:
+    source_saisie: "pcwin"
+    source_code: "PCWIN"          # code_source dans dim_source_mesure
+    
+    # ─── Filtre incrémental ───
+    # Date min (utilisée si pas de last_load détecté)
+    date_min_default: "2026-01-01"
+    
+    # ─── Lecture SQL ───
+    chunk_size: 100000            # nb lignes par chunk pandas
+    
+    # ─── Bronze ───
+    bronze_folder: "pcwin"
+    
+    # ─── Colonnes SQL brutes ───
+    sql_columns:
+      - station_id
+      - nom_station
+      - variable_id
+      - libelle_mesure
+      - unite
+      - datehe
+      - date
+      - valeur

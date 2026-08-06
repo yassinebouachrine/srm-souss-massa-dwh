@@ -1,0 +1,127 @@
+# ═══════════════════════════════════════════════════════════════
+# Configuration Étoile C — Rendements par étage
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Fichiers sources ───
+files:
+  histo_rendement:  "etages_rendements_Histo PBI.xlsx"
+  vol_amene:        "Volume Amené par étage (1).xlsx"
+  lineaire_etage:   "Linéaire Par étage.xlsx"
+  lineaire_secteur: "Linéaire Par Secteur 2026.xlsx"
+  matrice_locsec:   "Matrice Affectation Loc_Sec Etage.xlsx"
+
+# ─── Onglets Excel ───
+sheets:
+  histo_rendement:  "Etages"
+  vol_amene:        "Vol_Amene_Eatge"
+  lineaire_etage:   "Feuil1"
+  lineaire_secteur: "Feuil1"
+  matrice_locsec:   "matrice"
+
+# ─── Mapping mois FR abrégés → numéro ───
+mois_fr:
+  janv: 1
+  févr: 2
+  mars: 3
+  avr:  4
+  mai:  5
+  juin: 6
+  juil: 7
+  août: 8
+  sept: 9
+  oct:  10
+  nov:  11
+  déc:  12
+  # Variantes possibles
+  jan:  1
+  fev:  2
+  fév:  2
+  avril: 4
+  jun:  6
+  jul:  7
+  aou:  8
+  aug:  8
+  sep:  9
+  dec:  12
+
+# ─── Mapping mois EN (Volume Amené) ───
+mois_en:
+  jan: 1
+  feb: 2
+  mar: 3
+  apr: 4
+  may: 5
+  jun: 6
+  jul: 7
+  aug: 8
+  sep: 9
+  oct: 10
+  nov: 11
+  dec: 12
+
+# ─── Normalisation noms d'étages (Excel → code_etage DWH) ───
+# Le matching se fait sur la version normalisée (majuscules, sans accents, sans espaces multiples)
+etages_normalisation:
+  # ─── Étages simples ───
+  "TASSILA 75":                    "ETAGE_TASSILA_75"
+  "TASSILA 104":                   "ETAGE_TASSILA_104"
+  "BOUARGANE 85":                  "ETAGE_BOUARGANE_85"
+  "BOUARGANE 130":                 "ETAGE_BOUARGANE_130"
+  "MASSIRA 75":                    "ETAGE_MASSIRA_75"
+  "HAY MOHAMMADI 210":             "ETAGE_HAY_MOHAM_210"
+  "ILLIGH 175":                    "ETAGE_ILLIGH_175"
+  "TADDART 245":                   "ETAGE_TADDART_245"
+  "ANZA 70":                       "ETAGE_ANZA_70"
+  "ANZA 101":                      "ETAGE_ANZA_101"
+  "TAGADIRT 129":                  "ETAGE_TAGADIRT_129"
+  "TAMRAGHT 125":                  "ETAGE_TAMRAGHT_125"
+  "AOURIR TAMA OUANZA COTE 130":   "ETAGE_AOURIR_130"
+  "AIT EL MOUDEN":                 "ETAGE_AIT_MOUDEN"
+  "AIT EL MOUDDEN":                "ETAGE_AIT_MOUDEN"    # variante
+  "IGHIL OUDERDOUR":               "ETAGE_IGHIL_OUD"
+  "IGHIL OUDRDOUR":                "ETAGE_IGHIL_OUD"     # variante (sans le E)
+  "IMOUNSSISS":                    "ETAGE_IMOUNSSISS"
+  
+  # ─── Étages agrégés (roll-up) ───
+  "AOURIR + TAMRAGHT (LOC80)":     "ETAGE_AOUR_TAMR"
+  "AOURIR + TAMRAGHT":             "ETAGE_AOUR_TAMR"
+  "B130+ T104":                    "ETAGE_B130_T104"
+  "B130 + T104":                   "ETAGE_B130_T104"
+  "B 85+ M75":                     "ETAGE_B85_M75"
+  "B 85 + M75":                    "ETAGE_B85_M75"
+  "B85+ M75":                      "ETAGE_B85_M75"
+  "HAY M + ILLIGH 175":            "ETAGE_HAYM_ILLIGH"
+  "HAYM + ILLIGH 175":             "ETAGE_HAYM_ILLIGH"
+  "ANZA 70+ ANZA 101":             "ETAGE_ANZA_AGG"
+  "ANZA 70 + ANZA 101":            "ETAGE_ANZA_AGG"
+
+# ─── Normalisation noms de secteurs (Excel → code_secteur DWH) ───
+secteurs_normalisation:
+  # Variantes de noms dans Linéaire Par Secteur
+  "SECTEUR 18 NOVEMBRE":                    "SEC_18_NOV"
+  "75 MASSIRA ADRAR":                       "SEC_75_MASSIRA"
+  "AGDAL":                                  "SEC_AGDAL"
+  "AGHROUD":                                "SEC_AGHROUD"
+  "AIT EL MOUDDEN AIT TAOUKT":              "SEC_AIT_MOUDEN"
+  "AIT MELOUL PRISON + CASERNE":            "SEC_AM_PRISON"
+  "AL HASSANIA":                            "SEC_HASSANIA"
+  "AL HOUDA 1":                             "SEC_HOUDA_1"
+  "AL HOUDA 2":                             "SEC_HOUDA_2"
+  "AL JIHADIA":                             "SEC_JIHADIA"
+  "AL MAGHRIB AL ARABI AIT MELLOU":         "SEC_MAGHRIB"
+  "AL MASSIRA":                             "SEC_MASSIRA"
+  "AMICALES":                               "SEC_AMICALES"
+  "ANZA":                                   "SEC_ANZA"
+  "ANZA AL OULYA":                          "SEC_ANZA_OULYA"
+  "AOURIR":                                 "SEC_AOURIR"
+  # ... (compléter au besoin, mais l'update fonctionnera pour ceux déjà mappés)
+
+# ─── Configuration Bronze / Silver / Gold ───
+bronze_folder: "rendements"
+
+# ─── Règles métier ───
+regles:
+  # Rendements > 2.0 sont considérés comme aberrants et ignorés
+  rendement_max_valide: 2.0
+  # Nb jours pour calculer ILP (par défaut : 30 jours par mois)
+  nb_jours_mois_default: 30

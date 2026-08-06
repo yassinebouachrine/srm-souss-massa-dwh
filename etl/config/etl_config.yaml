@@ -126,3 +126,11 @@ sources:
       - datehe
       - date
       - valeur
+
+
+
+    
+  rendements:
+    source_saisie: "rendements_referentiels"
+    raw_folder: "referentiels/etoile_c"
+    bronze_folder: "rendements"

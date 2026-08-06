@@ -1,8 +1,10 @@
 """
 Update DIM_ETAGE avec les linéaires du fichier Linéaire Par étage.xlsx
 
+⚠️ Les valeurs Excel sont en MÈTRES malgré le nom "Lineaire (km)"
+→ On divise par 1000 pour obtenir des km.
+
 Idempotent : UPDATE sur code_etage matché.
-Ne crée PAS de nouveaux étages (utiliser 15_seed_dwh_etage.sql pour ça).
 
 Exécution : python -m etl.setup.update_dim_etage_lineaire
 """
@@ -36,16 +38,20 @@ def main():
     df = pd.read_excel(filepath, sheet_name=sheet, engine="openpyxl")
     df.columns = [c.strip() for c in df.columns]
     
-    # Colonnes attendues : NOM_ETAGE, Lineaire (km)
+    # Nettoyage
     df["nom_etage_norm"] = df["NOM_ETAGE"].astype(str).str.upper().str.strip()
     df["nom_etage_norm"] = df["nom_etage_norm"].apply(lambda x: " ".join(x.split()))
     df["code_etage"]     = df["nom_etage_norm"].map(mapping_etages)
-    df["lineaire_km"]    = pd.to_numeric(df["Lineaire (km)"], errors="coerce")
+    
+    # ⚠️ IMPORTANT : Les valeurs Excel sont en MÈTRES → convertir en km
+    df["lineaire_m_source"] = pd.to_numeric(df["Lineaire (km)"], errors="coerce")
+    df["lineaire_km"]       = df["lineaire_m_source"] / 1000.0
     
     df_ok = df[df["code_etage"].notna() & df["lineaire_km"].notna()].copy()
     df_ko = df[df["code_etage"].isna()].copy()
     
     logger.info(f"   ✅ {len(df_ok)} étages à mettre à jour")
+    logger.info(f"   ℹ️  Conversion : mètres → kilomètres (÷1000)")
     if not df_ko.empty:
         logger.warning(f"   ⚠️  {len(df_ko)} étages non reconnus :")
         for nom in df_ko["NOM_ETAGE"].unique():
@@ -68,10 +74,11 @@ def main():
     
     # Vérification
     print("\n" + "=" * 70)
-    print("📊 LINÉAIRES DIM_ETAGE APRÈS UPDATE")
+    print("📊 LINÉAIRES DIM_ETAGE APRÈS UPDATE (en km)")
     print("=" * 70)
     df_verif = read_sql("""
-        SELECT id_etage, code_etage, nom_etage, lineaire_km
+        SELECT id_etage, code_etage, nom_etage, 
+               ROUND(lineaire_km::numeric, 3) AS lineaire_km
         FROM dwh.dim_etage
         WHERE type_etage != 'Agrégation' AND id_etage > 0
         ORDER BY id_etage;

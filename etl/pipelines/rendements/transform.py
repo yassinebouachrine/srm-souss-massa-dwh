@@ -2,11 +2,12 @@
 ETL - Rendements Étage
 Étape : TRANSFORM (Silver)
 
-- Parser les mois (FR + EN) → id_temps
+- Parser les mois (FR + EN + variantes) → id_temps
 - Normaliser noms d'étage → code_etage
 - Fusionner histo_rendement + vol_amene par (etage, mois)
+  → Priorité : Vol_amene depuis "Volume Amené par étage.xlsx" (plus complet/récent)
+  → Fallback : Vol_amene depuis "etages_rendements_Histo PBI.xlsx" (si colonne présente)
 - Calculer volume_pertes, ilp
-- Filtrer rejets
 """
 import re
 import unicodedata
@@ -36,25 +37,31 @@ def _normalize_etage(nom: str, mapping: dict) -> str:
     return mapping.get(key)
 
 
-def _parse_mois_fr(mois_str: str, mapping_fr: dict) -> tuple:
+def _parse_mois_universal(mois_str: str, mapping_fr: dict, mapping_en: dict) -> tuple:
     """
-    Parse 'juin-21', 'juil.-21', 'déc.-21', 'janv.-22' → (annee, mois).
-    Retourne (None, None) si invalide.
+    Parser universel :
+    - 'juin-21', 'juil.-21', 'déc.-21', 'janv.-22' (FR)
+    - 'Jan-22', 'Feb-22', 'Dec-25' (EN)
+    - datetime déjà converti en 'Jan-22' par extract
     """
     if not mois_str or pd.isna(mois_str):
         return None, None
     
     s = str(mois_str).strip().lower()
-    # Retirer les points : "juil." → "juil"
+    if s == "nan" or s == "none":
+        return None, None
+    
     s = s.replace(".", "")
     
-    # Format attendu : "juin-21" ou "janv-22"
-    m = re.match(r'^([a-zéûà]+)[-\s]+(\d{2,4})$', s)
+    # Format attendu : "juin-21" ou "jan-22"
+    m = re.match(r'^([a-zéûàêô]+)[-\s]+(\d{2,4})$', s)
     if not m:
         return None, None
     
     mois_txt, annee_txt = m.group(1), m.group(2)
-    mois_num = mapping_fr.get(mois_txt)
+    
+    # Essayer FR d'abord, puis EN
+    mois_num = mapping_fr.get(mois_txt) or mapping_en.get(mois_txt)
     if not mois_num:
         return None, None
     
@@ -65,35 +72,11 @@ def _parse_mois_fr(mois_str: str, mapping_fr: dict) -> tuple:
     return annee, mois_num
 
 
-def _parse_mois_en(mois_str: str, mapping_en: dict) -> tuple:
-    """
-    Parse 'Jan-22', 'Feb-22', 'Dec-25' → (annee, mois).
-    """
-    if not mois_str or pd.isna(mois_str):
-        return None, None
-    
-    s = str(mois_str).strip().lower()
-    m = re.match(r'^([a-z]+)[-\s]+(\d{2,4})$', s)
-    if not m:
-        return None, None
-    
-    mois_txt, annee_txt = m.group(1), m.group(2)
-    mois_num = mapping_en.get(mois_txt)
-    if not mois_num:
-        return None, None
-    
-    annee = int(annee_txt)
-    if annee < 100:
-        annee += 2000
-    
-    return annee, mois_num
-
-
-def _year_month_to_id_temps(annee: int, mois: int) -> int:
+def _year_month_to_id_temps(annee, mois) -> int:
     """(2025, 3) → 20250301"""
-    if annee is None or mois is None:
+    if annee is None or mois is None or pd.isna(annee) or pd.isna(mois):
         return None
-    return int(f"{annee:04d}{mois:02d}01")
+    return int(f"{int(annee):04d}{int(mois):02d}01")
 
 
 def _parse_float(v) -> float:
@@ -102,7 +85,7 @@ def _parse_float(v) -> float:
         return np.nan
     if isinstance(v, str):
         s = v.strip().replace(" ", "").replace("\xa0", "").replace(",", ".")
-        if not s:
+        if not s or s.lower() in ("nan", "none", "-"):
             return np.nan
         try:
             return float(s)
@@ -115,7 +98,7 @@ def _parse_float(v) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════
-# TRANSFORM
+# TRANSFORM HISTO
 # ═══════════════════════════════════════════════════════════════
 
 def transform_histo(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
@@ -123,33 +106,32 @@ def transform_histo(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     logger.info("🔄 Transform histo_rendement...")
     
     mapping_etages = cfg["etages_normalisation"]
-    mapping_mois   = cfg["mois_fr"]
+    mapping_fr     = cfg["mois_fr"]
+    mapping_en     = cfg["mois_en"]
     
     df = df_bronze.copy()
     
-    # Normaliser étage
     df["code_etage"] = df["nom_etage_source"].apply(
         lambda x: _normalize_etage(x, mapping_etages)
     )
     
-    # Parser mois
     df[["annee", "mois"]] = df["mois_source"].apply(
-        lambda x: pd.Series(_parse_mois_fr(x, mapping_mois))
+        lambda x: pd.Series(_parse_mois_universal(x, mapping_fr, mapping_en))
     )
     df["id_temps"] = df.apply(
         lambda r: _year_month_to_id_temps(r["annee"], r["mois"]), axis=1
     )
     
     # Parser valeurs
-    df["nb_clients"]     = df["nb_clients_source"].apply(_parse_float)
-    df["volume_facture"] = df["vol_facture_source"].apply(_parse_float)
-    df["rendement"]      = df["rendement_source"].apply(_parse_float)
+    df["nb_clients"]        = df["nb_clients_source"].apply(_parse_float)
+    df["volume_facture"]    = df["vol_facture_source"].apply(_parse_float)
+    df["rendement"]         = df["rendement_source"].apply(_parse_float)
+    df["volume_amene_histo"] = df["vol_amene_source"].apply(_parse_float)
     
     # Rejets
     df["motif_rejet"] = None
     df.loc[df["code_etage"].isna(), "motif_rejet"] = "etage_inconnu"
     df.loc[df["id_temps"].isna(),   "motif_rejet"] = "mois_invalide"
-    # Rendement > seuil = aberrant
     rend_max = cfg["regles"]["rendement_max_valide"]
     df.loc[df["rendement"] > rend_max, "motif_rejet"] = f"rendement_aberrant_gt_{rend_max}"
     
@@ -160,15 +142,18 @@ def transform_histo(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     if not df_rejets.empty:
         for motif, cnt in df_rejets["motif_rejet"].value_counts().items():
             logger.warning(f"      • {motif} : {cnt}")
+        etages_ko = df_rejets[df_rejets["motif_rejet"] == "etage_inconnu"]["nom_etage_source"].unique()
+        if len(etages_ko) > 0:
+            logger.warning(f"      Étages inconnus : {list(etages_ko)[:10]}")
     
-    # Colonnes finales Silver (dédupliquer par (id_temps, code_etage) → prendre la dernière)
+    # Silver
     df_silver = df_valides[[
         "id_temps", "code_etage", "annee", "mois",
-        "nb_clients", "volume_facture", "rendement",
+        "nb_clients", "volume_facture", "rendement", "volume_amene_histo",
         "fichier_source", "onglet_source", "date_extraction",
     ]].copy()
     
-    # Déduplication (fichier historique peut avoir des doublons)
+    # Déduplication (garder dernier)
     df_silver = df_silver.drop_duplicates(
         subset=["id_temps", "code_etage"], keep="last"
     ).reset_index(drop=True)
@@ -178,12 +163,17 @@ def transform_histo(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     return df_silver, df_rejets
 
 
+# ═══════════════════════════════════════════════════════════════
+# TRANSFORM VOL AMENE
+# ═══════════════════════════════════════════════════════════════
+
 def transform_vol_amene(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     """Transforme le Bronze vol_amene → Silver format long propre."""
     logger.info("🔄 Transform vol_amene...")
     
     mapping_etages = cfg["etages_normalisation"]
-    mapping_mois   = cfg["mois_en"]
+    mapping_fr     = cfg["mois_fr"]
+    mapping_en     = cfg["mois_en"]
     
     df = df_bronze.copy()
     
@@ -192,7 +182,7 @@ def transform_vol_amene(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     )
     
     df[["annee", "mois"]] = df["mois_source"].apply(
-        lambda x: pd.Series(_parse_mois_en(x, mapping_mois))
+        lambda x: pd.Series(_parse_mois_universal(x, mapping_fr, mapping_en))
     )
     df["id_temps"] = df.apply(
         lambda r: _year_month_to_id_temps(r["annee"], r["mois"]), axis=1
@@ -200,11 +190,9 @@ def transform_vol_amene(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     
     df["volume_amene"] = df["vol_amene_source"].apply(_parse_float)
     
-    # Rejets
     df["motif_rejet"] = None
-    df.loc[df["code_etage"].isna(),   "motif_rejet"] = "etage_inconnu"
-    df.loc[df["id_temps"].isna(),     "motif_rejet"] = "mois_invalide"
-    # Volume NULL → ignoré (rien à charger), pas rejet
+    df.loc[df["code_etage"].isna(), "motif_rejet"] = "etage_inconnu"
+    df.loc[df["id_temps"].isna(),   "motif_rejet"] = "mois_invalide"
     
     df_rejets  = df[df["motif_rejet"].notna()].copy()
     df_valides = df[df["motif_rejet"].isna() & df["volume_amene"].notna()].copy()
@@ -213,6 +201,9 @@ def transform_vol_amene(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     if not df_rejets.empty:
         for motif, cnt in df_rejets["motif_rejet"].value_counts().items():
             logger.warning(f"      • {motif} : {cnt}")
+        etages_ko = df_rejets[df_rejets["motif_rejet"] == "etage_inconnu"]["nom_etage_source"].unique()
+        if len(etages_ko) > 0:
+            logger.warning(f"      Étages inconnus : {list(etages_ko)[:10]}")
     
     df_silver = df_valides[[
         "id_temps", "code_etage", "annee", "mois", "volume_amene",
@@ -228,6 +219,10 @@ def transform_vol_amene(df_bronze: pd.DataFrame, cfg: dict) -> tuple:
     return df_silver, df_rejets
 
 
+# ═══════════════════════════════════════════════════════════════
+# MERGE & ENRICH
+# ═══════════════════════════════════════════════════════════════
+
 def merge_and_enrich(
     df_histo: pd.DataFrame, 
     df_vol: pd.DataFrame,
@@ -236,47 +231,68 @@ def merge_and_enrich(
 ) -> pd.DataFrame:
     """
     Fusionne histo + vol_amene par (id_temps, code_etage) [FULL OUTER].
-    Enrichit avec linéaire et calcule pertes + ILP.
+    
+    Priorité pour volume_amene :
+    1. Vol_amene du fichier dédié (plus fiable/récent)
+    2. Vol_amene_histo (si colonne présente dans fichier histo)
     """
     logger.info("🔗 Fusion histo + vol_amene...")
     
-    # FULL OUTER JOIN sur (id_temps, code_etage)
+    # FULL OUTER JOIN
     df = pd.merge(
         df_histo[["id_temps", "code_etage", "annee", "mois",
-                  "nb_clients", "volume_facture", "rendement"]],
-        df_vol[["id_temps", "code_etage", "volume_amene"]],
+                  "nb_clients", "volume_facture", "rendement", "volume_amene_histo"]],
+        df_vol[["id_temps", "code_etage", "volume_amene"]].rename(
+            columns={"volume_amene": "volume_amene_dedie"}
+        ),
         on=["id_temps", "code_etage"],
         how="outer",
     )
     
     logger.info(f"   Résultat fusion : {len(df)} lignes")
-    logger.info(f"      • Histo seul       : {df['nb_clients'].notna().sum() & df['volume_amene'].isna().sum()}")
-    logger.info(f"      • Vol_amene seul   : {df['volume_amene'].notna().sum() & df['nb_clients'].isna().sum()}")
-    logger.info(f"      • Les deux         : {(df['nb_clients'].notna() & df['volume_amene'].notna()).sum()}")
     
     # Reconstituer annee/mois si NULL (venait uniquement de vol_amene)
     if df["annee"].isna().any():
-        df["annee"] = df["annee"].fillna(df["id_temps"].astype(str).str[:4].astype(int))
-        df["mois"]  = df["mois"].fillna(df["id_temps"].astype(str).str[4:6].astype(int))
+        mask_null = df["annee"].isna() & df["id_temps"].notna()
+        df.loc[mask_null, "annee"] = df.loc[mask_null, "id_temps"].astype(str).str[:4].astype(int)
+        df.loc[mask_null, "mois"]  = df.loc[mask_null, "id_temps"].astype(str).str[4:6].astype(int)
+    
+    # Prioriser vol_amene dédié sur vol_amene_histo
+    df["volume_amene"] = df["volume_amene_dedie"].fillna(df["volume_amene_histo"])
     
     # Enrichir avec linéaire
     df = df.merge(df_lineaires, on="code_etage", how="left")
     
-    # Calculs dérivés
+    # Calculs
     df["volume_pertes"] = df["volume_amene"] - df["volume_facture"]
     
-    # ILP = volume_pertes / lineaire_km / nb_jours_mois
     nb_jours = cfg["regles"]["nb_jours_mois_default"]
     df["ilp"] = np.where(
-        (df["lineaire_km"] > 0) & df["volume_pertes"].notna(),
+        (df["lineaire_km"] > 0) & df["volume_pertes"].notna() & (df["volume_pertes"] > 0),
         df["volume_pertes"] / df["lineaire_km"] / nb_jours,
         np.nan,
     )
     
-    # Source de données
-    df["source_donnees"] = "histo_pbi+vol_amene"
-    df.loc[df["nb_clients"].isna(),   "source_donnees"] = "vol_amene_seul"
-    df.loc[df["volume_amene"].isna(), "source_donnees"] = "histo_pbi_seul"
+    # Source des données
+    df["source_donnees"] = "inconnue"
+    df.loc[df["nb_clients"].notna() & df["volume_amene"].notna(), "source_donnees"] = "histo+vol_amene"
+    df.loc[df["nb_clients"].notna() & df["volume_amene"].isna(),  "source_donnees"] = "histo_seul"
+    df.loc[df["nb_clients"].isna()  & df["volume_amene"].notna(), "source_donnees"] = "vol_amene_seul"
+    
+    # Stats
+    logger.info(f"   📊 Répartition des sources :")
+    for src, cnt in df["source_donnees"].value_counts().items():
+        logger.info(f"      • {src:20s} : {cnt}")
+    
+    logger.info(f"   💧 Volumes disponibles :")
+    logger.info(f"      • volume_amene     : {df['volume_amene'].notna().sum()}")
+    logger.info(f"      • volume_facture   : {df['volume_facture'].notna().sum()}")
+    logger.info(f"      • volume_pertes    : {df['volume_pertes'].notna().sum()}")
+    logger.info(f"      • ilp calculé      : {df['ilp'].notna().sum()}")
+    logger.info(f"      • rendement        : {df['rendement'].notna().sum()}")
+    
+    # Nettoyer colonnes intermédiaires
+    df = df.drop(columns=["volume_amene_histo", "volume_amene_dedie"], errors="ignore")
     
     return df
 
@@ -294,11 +310,11 @@ def run_transform() -> dict:
     result = {"status": "success"}
     
     try:
-        # 1. Charger Bronze
+        # 1. Bronze
         df_bronze_histo = read_parquet(get_latest_parquet("bronze", SOURCE_NAME, "histo_rendement"))
         df_bronze_vol   = read_parquet(get_latest_parquet("bronze", SOURCE_NAME, "vol_amene"))
         
-        # 2. Charger linéaires depuis DWH
+        # 2. Linéaires DWH
         from etl.common.db import read_sql
         df_lineaires = read_sql("""
             SELECT code_etage, lineaire_km
@@ -310,7 +326,7 @@ def run_transform() -> dict:
         df_histo_sv, df_rej_h = transform_histo(df_bronze_histo, cfg)
         df_vol_sv,   df_rej_v = transform_vol_amene(df_bronze_vol, cfg)
         
-        # 4. Fusionner + enrichir
+        # 4. Fusion
         df_silver = merge_and_enrich(df_histo_sv, df_vol_sv, df_lineaires, cfg)
         
         # 5. Sauvegardes
@@ -322,7 +338,6 @@ def run_transform() -> dict:
             result["silver_parquet"] = str(p)
             result["nb_silver"] = len(df_silver)
         
-        # Consolider rejets
         rejets = [r for r in [df_rej_h, df_rej_v] if not r.empty]
         if rejets:
             df_rej = pd.concat(rejets, ignore_index=True)

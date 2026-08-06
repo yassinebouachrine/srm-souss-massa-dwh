@@ -39,28 +39,31 @@ def _normalize_etage(nom: str, mapping: dict) -> str:
 
 def _parse_mois_universal(mois_str: str, mapping_fr: dict, mapping_en: dict) -> tuple:
     """
-    Parser universel :
-    - 'juin-21', 'juil.-21', 'déc.-21', 'janv.-22' (FR)
-    - 'Jan-22', 'Feb-22', 'Dec-25' (EN)
-    - datetime déjà converti en 'Jan-22' par extract
+    Parser universel des formats mois :
+    - 'juin-21', 'juil.-21', 'déc.-21', 'janv.-22' (FR string original)
+    - 'Jan-22', 'Feb-22', 'Dec-25' (EN, ex-datetime normalisé)
+    - '2021-06-01 00:00:00' (fallback datetime string)
     """
     if not mois_str or pd.isna(mois_str):
         return None, None
     
     s = str(mois_str).strip().lower()
-    if s == "nan" or s == "none":
+    if s in ("nan", "none", ""):
         return None, None
     
-    s = s.replace(".", "")
+    # Cas 1 : format datetime string "2021-06-01 00:00:00" ou "2021-06-01"
+    m_iso = re.match(r'^(\d{4})-(\d{2})-\d{2}', s)
+    if m_iso:
+        annee, mois = int(m_iso.group(1)), int(m_iso.group(2))
+        return annee, mois
     
-    # Format attendu : "juin-21" ou "jan-22"
+    # Cas 2 : format "Mon-YY" ou "juin-21" ou "juil.-21"
+    s = s.replace(".", "")
     m = re.match(r'^([a-zéûàêô]+)[-\s]+(\d{2,4})$', s)
     if not m:
         return None, None
     
     mois_txt, annee_txt = m.group(1), m.group(2)
-    
-    # Essayer FR d'abord, puis EN
     mois_num = mapping_fr.get(mois_txt) or mapping_en.get(mois_txt)
     if not mois_num:
         return None, None
@@ -80,12 +83,19 @@ def _year_month_to_id_temps(annee, mois) -> int:
 
 
 def _parse_float(v) -> float:
-    """Convertit une valeur en float, NaN si invalide."""
+    """
+    Convertit une valeur en float, NaN si invalide.
+    Gère les espaces insécables (\\u202f, \\xa0) utilisés comme séparateurs de milliers en français.
+    """
     if pd.isna(v):
         return np.nan
     if isinstance(v, str):
-        s = v.strip().replace(" ", "").replace("\xa0", "").replace(",", ".")
-        if not s or s.lower() in ("nan", "none", "-"):
+        s = v.strip()
+        # Retirer TOUS les types d'espaces (normal, insécable, insécable étroit)
+        s = s.replace(" ", "").replace("\xa0", "").replace("\u202f", "")
+        # Remplacer virgule décimale par point
+        s = s.replace(",", ".")
+        if not s or s.lower() in ("nan", "none", "-", ""):
             return np.nan
         try:
             return float(s)

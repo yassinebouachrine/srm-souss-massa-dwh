@@ -23,6 +23,30 @@ SOURCE_NAME = "rendements"
 # ═══════════════════════════════════════════════════════════════
 # EXTRACT 1 : HISTO RENDEMENT (déjà en format long)
 # ═══════════════════════════════════════════════════════════════
+def _normalize_mois_source(val) -> str:
+    """
+    Normalise une valeur de mois en format 'Mon-YY' unifié.
+    
+    Gère :
+    - datetime/Timestamp (2021-06-01) → 'Jun-21'
+    - Strings FR : 'juin-21', 'juil.-21', 'août-21' → gardés tels quels
+    - NaN → None
+    """
+    if val is None or pd.isna(val):
+        return None
+    
+    # Cas datetime (pandas lit parfois "juin-21" comme datetime)
+    if isinstance(val, (datetime, date, pd.Timestamp)):
+        return pd.Timestamp(val).strftime("%b-%y")
+    
+    # Sinon retourner tel quel (string FR)
+    s = str(val).strip()
+    if not s or s.lower() == "nan":
+        return None
+    return s
+
+
+
 
 def _extract_histo(cfg: dict, date_extraction: datetime) -> pd.DataFrame:
     """
@@ -65,10 +89,13 @@ def _extract_histo(cfg: dict, date_extraction: datetime) -> pd.DataFrame:
         nb_vol = df["vol_amene_source"].notna().sum()
         logger.info(f"   ℹ️  Colonne 'Vol amené' trouvée : {nb_vol}/{len(df)} valeurs")
     
+    # ⚠️ Normaliser mois_source AVANT le cast str
+    # (Excel peut convertir "juin-21" en datetime automatiquement)
+    df["mois_source"] = df["mois_source"].apply(_normalize_mois_source)
+    
     # Cast string pour Parquet (Bronze = brut)
-    for col in ["nom_etage_source", "mois_source"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str)
+    df["nom_etage_source"] = df["nom_etage_source"].astype(str)
+    df["mois_source"]      = df["mois_source"].astype(str)
     
     df["fichier_source"]  = filename
     df["onglet_source"]   = sheet
@@ -184,9 +211,11 @@ def _extract_vol_amene(cfg: dict, date_extraction: datetime) -> pd.DataFrame:
     df_long["onglet_source"]   = sheet
     df_long["date_extraction"] = date_extraction
     
-    # Cast pour Parquet
+    # ⚠️ IMPORTANT : Cast TOUT en string pour Parquet Bronze
+    # (les valeurs Excel peuvent être numériques OU strings avec espaces insécables)
     df_long["nom_etage_source"] = df_long["nom_etage_source"].astype(str)
     df_long["mois_source"]      = df_long["mois_source"].astype(str)
+    df_long["vol_amene_source"] = df_long["vol_amene_source"].astype(str)  # ← AJOUTÉ
     
     return df_long
 

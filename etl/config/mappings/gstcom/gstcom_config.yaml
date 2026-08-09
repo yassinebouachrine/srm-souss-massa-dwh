@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════════
+# Configuration GSTCOM - Consommations & Anomalies clients
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Fichier source ───
+file_pattern: "*.xlsx"
+sheet_name: "Feuil1"
+
+# ─── Mapping colonnes Excel → SQL ───
+column_mapping:
+  type_part_adm:   "type_part_adm"
+  loc:             "loc"
+  sec:             "sec"
+  TRN:             "tournee"
+  ORD:             "ordre_tournee"
+  CAT:             "categorie"
+  police:          "police"
+  CONSO:           "conso_reelle"
+  CREDRES:         "credit"
+  REDRES:          "redressement"
+  "Conso facture": "conso_facturee"
+  dt_rlv02:        "date_releve_fin"
+  hr_rlv02:        "heure_releve_fin"
+  AN_02:           "code_anomalie_02"
+  IDX_02:          "index_fin"
+  dt_rlv01:        "date_releve_debut"
+  Hr_rlv01:        "heure_releve_debut"
+  AN_01:           "code_anomalie_01"
+  idx_01:          "index_debut"
+  Latitude:        "latitude"
+  Longitude:       "longitude"
+  mle_lecteur:     "matricule_lecteur"
+  NOM:             "nom_client"
+  ADRESSE:         "adresse"
+  DT_POSE:         "date_installation_compteur"
+  num_cpt:         "numero_compteur"
+
+# ─── Codes anomalies AN_02 → id_type_anomalie ───
+# ⚠️ À AJUSTER quand tu auras la vraie doc GSTCOM
+codes_anomalies:
+  "N": 1     # Normal
+  "A": 2     # Absent
+  "I": 3     # Inaccessible
+  "K": 4     # Bloqué
+  "M": 5     # Changé/Modifié
+  "E": 6     # À l'envers
+  "P": 7     # Panne
+
+# ─── Règles métier ───
+regles:
+  # Détection gros consommateur
+  categorie_gros_conso: "G"        # ou seuil de conso
+  
+  # Détection statut
+  categorie_inconnue: "X"
+  
+  # Nombre de jours de référence pour Conso Rapportée
+  nb_jours_reference: 30
+  
+  # Seuil aberration conso (m³/mois)
+  conso_max_aberrante: 100000
+  
+  # Anomalies à exclure du fait_anomalie (car normal)
+  codes_ignorer: ["N"]
+
+# ─── Configuration Bronze ───
+bronze_folder: "gstcom"
+
+# ─── Source path (dossier où sera déposé le fichier) ───
+raw_folder: "gstcom"    # data/raw/gstcom/*.xlsx

@@ -129,3 +129,23 @@ clean:
 docs:
 	@echo "$(YELLOW)📖 Génération de la documentation...$(NC)"
 	@echo "TODO : Sphinx ou MkDocs"
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# POWER BI - VUES
+# ═══════════════════════════════════════════════════════════════
+
+init-views:
+	@echo "$(YELLOW)📊 Création des vues Power BI...$(NC)"
+	@for f in database/views/*.sql; do \
+		echo "  → $$f"; \
+		psql -h localhost -U postgres -d srm_datawarehouse -f $$f; \
+	done
+	@echo "$(GREEN)✅ Vues créées$(NC)"
+
+refresh-views:
+	$(PYTHON) scripts/refresh_pbi_views.py
+
+refresh-carte:
+	$(PYTHON) scripts/refresh_pbi_views.py --view carte

@@ -1,0 +1,79 @@
+{
+  "name": "SRM Souss-Massa Theme",
+  "dataColors": [
+    "#1B4F72",
+    "#2E86C1",
+    "#28B463",
+    "#F39C12",
+    "#E74C3C",
+    "#8E44AD",
+    "#16A085",
+    "#D35400",
+    "#7F8C8D",
+    "#34495E",
+    "#C0392B",
+    "#3498DB"
+  ],
+  "background": "#FFFFFF",
+  "foreground": "#1B4F72",
+  "tableAccent": "#1B4F72",
+  "good": "#28B463",
+  "neutral": "#F39C12",
+  "bad": "#E74C3C",
+  "maximum": "#28B463",
+  "center": "#F39C12",
+  "minimum": "#E74C3C",
+  "null": "#95A5A6",
+  "textClasses": {
+    "title": {
+      "fontFace": "Segoe UI",
+      "fontSize": 16,
+      "color": "#1B4F72"
+    },
+    "header": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 12,
+      "color": "#FFFFFF"
+    },
+    "label": {
+      "fontFace": "Segoe UI",
+      "fontSize": 10,
+      "color": "#2C3E50"
+    },
+    "callout": {
+      "fontFace": "Segoe UI Bold",
+      "fontSize": 24,
+      "color": "#1B4F72"
+    }
+  },
+  "visualStyles": {
+    "*": {
+      "*": {
+        "background": [{"color": {"solid": {"color": "#FFFFFF"}}}],
+        "border": [{"show": true, "color": {"solid": {"color": "#D5D8DC"}}, "radius": 4}],
+        "visualHeader": [{"show": false}]
+      }
+    },
+    "card": {
+      "*": {
+        "background": [{"color": {"solid": {"color": "#F8F9FA"}}}],
+        "dataLabels": [{"color": {"solid": {"color": "#1B4F72"}}, "fontSize": 28, "fontFamily": "Segoe UI Bold"}],
+        "categoryLabels": [{"color": {"solid": {"color": "#7F8C8D"}}, "fontSize": 11}]
+      }
+    },
+    "tableEx": {
+      "*": {
+        "grid": [{"outlineColor": {"solid": {"color": "#D5D8DC"}}, "outlineWeight": 1}],
+        "columnHeaders": [{"backColor": {"solid": {"color": "#1B4F72"}}, "fontColor": {"solid": {"color": "#FFFFFF"}}, "fontFamily": "Segoe UI Semibold"}],
+        "values": [{"fontFamily": "Segoe UI", "fontSize": 10, "backColorPrimary": {"solid": {"color": "#F8F9FA"}}, "backColorSecondary": {"solid": {"color": "#FFFFFF"}}}]
+      }
+    },
+    "slicer": {
+      "*": {
+        "background": [{"color": {"solid": {"color": "#FEF9E7"}}}],
+        "border": [{"show": true, "color": {"solid": {"color": "#F39C12"}}, "radius": 2}],
+        "header": [{"background": {"solid": {"color": "#F39C12"}}, "fontColor": {"solid": {"color": "#FFFFFF"}}}]
+      }
+    }
+  }
+}

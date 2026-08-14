@@ -1,4 +1,4 @@
-# 🌊 SRM Souss-Massa - Data Platform
+#  SRM Souss-Massa - Data Platform
 
 Plateforme régionale de collecte, traitement et visualisation des données 
 hydrauliques pour la **Société Régionale Multiservices de Souss-Massa**.
@@ -9,7 +9,7 @@ hydrauliques pour la **Société Régionale Multiservices de Souss-Massa**.
 
 ---
 
-## 📋 Description
+##  Description
 
 Cette plateforme centralise **6 sources de données** dans un Data Warehouse en 
 **constellation Kimball**, orchestré par Airflow et visualisé via Power BI.
@@ -34,7 +34,7 @@ Cette plateforme centralise **6 sources de données** dans un Data Warehouse en
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 ┌─────────────────┐
 │ Sources Data │ Excel · CSV · SQL Server · PostgreSQL
 └────────┬────────┘
@@ -57,7 +57,7 @@ Cette plateforme centralise **6 sources de données** dans un Data Warehouse en
 
 ---
 
-## 🚀 Installation
+##  Installation
 
 ### Prérequis
 

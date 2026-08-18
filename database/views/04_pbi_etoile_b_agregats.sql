@@ -189,3 +189,53 @@ WHERE dp.est_reservoir = TRUE;
 
 COMMENT ON VIEW dwh.vw_pbi_pseudo_rendement IS 
     'Pseudo-rendement mensuel par étage — page Pseudo Rendement / Étage';
+
+
+
+
+
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- VW_PBI_BILAN_MENSUEL_GC : Bilan mensuel des Grands Comptes PMAC
+-- Filtré sur groupe_mesure IN ('GROS CONSO', ...)
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE VIEW dwh.vw_pbi_bilan_mensuel_gc AS
+WITH index_debut_mois AS (
+    SELECT DISTINCT ON (id_point_mesure, EXTRACT(YEAR FROM heure), EXTRACT(MONTH FROM heure))
+        id_point_mesure,
+        DATE_TRUNC('month', heure)::DATE AS mois_debut,
+        heure                            AS heure_debut,
+        index_compteur                   AS index_debut
+    FROM dwh.fait_mesure_temps_reel
+    WHERE voie = 'INDEX' AND index_compteur IS NOT NULL
+    ORDER BY id_point_mesure, EXTRACT(YEAR FROM heure), EXTRACT(MONTH FROM heure), heure ASC
+)
+SELECT
+    dp.id_pmac                         AS pmac_id,
+    dp.nom_point,
+    dp.groupe_mesure,
+    v.mois_debut                       AS date_mois,
+    EXTRACT(YEAR FROM v.mois_debut)::INT  AS annee,
+    EXTRACT(MONTH FROM v.mois_debut)::INT AS mois,
+    TO_CHAR(v.mois_debut, 'YYYY-MM')   AS annee_mois,
+    v.index_debut,
+    (SELECT v2.index_debut 
+     FROM index_debut_mois v2
+     WHERE v2.id_point_mesure = v.id_point_mesure
+       AND v2.mois_debut = v.mois_debut + INTERVAL '1 month'
+    ) AS index_fin,
+    (SELECT v2.index_debut - v.index_debut
+     FROM index_debut_mois v2
+     WHERE v2.id_point_mesure = v.id_point_mesure
+       AND v2.mois_debut = v.mois_debut + INTERVAL '1 month'
+    ) AS volume_mois
+FROM index_debut_mois v
+JOIN dwh.dim_point_mesure dp ON v.id_point_mesure = dp.id_point_mesure
+-- ⚠️ Filtre : uniquement les GROS CONSO
+WHERE dp.groupe_mesure ILIKE '%GROS CONSO%'
+   OR dp.groupe_mesure ILIKE '%GC%';
+
+COMMENT ON VIEW dwh.vw_pbi_bilan_mensuel_gc IS 
+    'Bilan mensuel des Grands Comptes (GC) PMAC — page Bilan Mensuel GC PMAC';

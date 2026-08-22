@@ -22,8 +22,9 @@ ENV/
 # ─── Variables d'environnement ────────────────────────────
 .env
 .env.local
-.env.production
-.env.docker
+.env.example
+# .env.production
+# .env.docker
 *.pem
 *.key
 

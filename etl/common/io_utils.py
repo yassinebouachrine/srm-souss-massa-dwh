@@ -5,6 +5,9 @@ import pandas as pd
 from etl.common.config import get_path
 from etl.common.logger import get_logger
 
+from etl.common.config import get_raw_source_path  
+
+
 logger = get_logger(__name__)
 
 
@@ -54,10 +57,14 @@ def get_latest_parquet(layer: str, source: str, name_prefix: str) -> Path:
     return files[0]
 
 
-def list_raw_files(source: str, pattern: str = "*.xlsx") -> list[Path]:
-    """Liste les fichiers bruts d'une source."""
-    folder = get_path("raw") / source
+
+def list_raw_files(source: str, pattern: str = "*.*") -> list[Path]:
+    """Liste les fichiers bruts d'une source, en utilisant les chemins du .env."""
+    folder = get_raw_source_path(source)
+    
     if not folder.exists():
-        logger.warning(f"⚠️  Dossier introuvable : {folder}")
+        logger.warning(f"⚠️  Dossier source introuvable : {folder}")
         return []
-    return sorted(folder.glob(pattern))
+    
+    # Exclure les fichiers temporaires/cachés
+    return sorted([f for f in folder.rglob(pattern) if not f.name.startswith("~")])

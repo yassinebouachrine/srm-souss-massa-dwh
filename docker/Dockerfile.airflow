@@ -1,0 +1,14 @@
+# Base officielle Airflow 2.8.1 avec Python 3.10
+FROM apache/airflow:2.8.1-python3.10
+
+# Copier le fichier des dépendances
+COPY requirements.txt /requirements.txt
+
+# Installer les dépendances Python du projet
+# (on utilise les versions fixées pour éviter les conflits numpy/pyarrow)
+RUN pip install --no-cache-dir "numpy==1.26.3" \
+    && pip install --no-cache-dir -r /requirements.txt \
+    && pip install --no-cache-dir apache-airflow-providers-postgres pymssql
+
+# Définir le PYTHONPATH pour que Airflow trouve tes modules ETL
+ENV PYTHONPATH="/opt/airflow"

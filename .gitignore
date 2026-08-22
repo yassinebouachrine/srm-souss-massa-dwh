@@ -23,6 +23,7 @@ ENV/
 .env
 .env.local
 .env.production
+.env.docker
 *.pem
 *.key
 
@@ -63,3 +64,11 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+
+
+
+docker-compose.yml
+
+docker/
+Makefile

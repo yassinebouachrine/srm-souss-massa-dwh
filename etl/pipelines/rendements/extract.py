@@ -15,6 +15,10 @@ from etl.common.config import get_path, load_mapping
 from etl.common.logger import get_logger
 from etl.common.io_utils import save_parquet
 
+
+from etl.common.config import get_raw_source_path  
+
+
 logger = get_logger(__name__)
 
 SOURCE_NAME = "rendements"
@@ -57,7 +61,8 @@ def _extract_histo(cfg: dict, date_extraction: datetime) -> pd.DataFrame:
     """
     filename = cfg["files"]["histo_rendement"]
     sheet    = cfg["sheets"]["histo_rendement"]
-    filepath = get_path("raw") / "referentiels" / "etoile_c" / filename
+
+    filepath = get_raw_source_path("rendements") / filename
     
     if not filepath.exists():
         raise FileNotFoundError(f"❌ {filepath}")
@@ -157,7 +162,7 @@ def _extract_vol_amene(cfg: dict, date_extraction: datetime) -> pd.DataFrame:
     """
     filename = cfg["files"]["vol_amene"]
     sheet    = cfg["sheets"]["vol_amene"]
-    filepath = get_path("raw") / "referentiels" / "etoile_c" / filename
+    filepath = get_raw_source_path("rendements") / filename
     
     if not filepath.exists():
         raise FileNotFoundError(f"❌ {filepath}")

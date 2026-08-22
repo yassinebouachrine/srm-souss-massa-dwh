@@ -20,6 +20,9 @@ from etl.common.config import get_path
 from etl.common.db import get_engine, read_sql
 from etl.common.logger import get_logger
 
+from etl.common.config import get_raw_source_path 
+
+
 logger = get_logger(__name__)
 
 REFERENTIEL_FILENAME = "Groupes Points Mesures PCWIN pour PBI.xlsx"
@@ -28,7 +31,7 @@ SHEET_NAME = "Feuil1"
 
 def load_referentiel_excel() -> pd.DataFrame:
     """Charge le fichier référentiel."""
-    filepath = get_path("raw") / "referentiels" / "etoile_b" / REFERENTIEL_FILENAME
+    filepath = get_raw_source_path("referentiels") / REFERENTIEL_FILENAME
 
     if not filepath.exists():
         raise FileNotFoundError(

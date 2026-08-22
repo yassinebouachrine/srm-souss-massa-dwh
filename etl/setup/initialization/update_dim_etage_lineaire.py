@@ -15,6 +15,9 @@ from etl.common.config import get_path, load_mapping
 from etl.common.db import get_engine, read_sql
 from etl.common.logger import get_logger
 
+from etl.common.config import get_raw_source_path  # A ajouter en haut si absent
+
+
 logger = get_logger(__name__)
 
 SOURCE_NAME = "rendements"
@@ -30,7 +33,8 @@ def main():
     sheet    = cfg["sheets"]["lineaire_etage"]
     mapping_etages = cfg["etages_normalisation"]
     
-    filepath = get_path("raw") / "referentiels" / "etoile_c" / filename
+    filepath = get_raw_source_path("referentiels") / filename
+
     if not filepath.exists():
         raise FileNotFoundError(f"❌ {filepath}")
     

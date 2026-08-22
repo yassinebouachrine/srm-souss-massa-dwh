@@ -20,6 +20,8 @@ from etl.common.config import get_path
 from etl.common.db import get_engine, read_sql
 from etl.common.logger import get_logger
 
+from etl.common.config import get_raw_source_path  
+
 logger = get_logger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
@@ -93,7 +95,7 @@ def _clean_float(v):
 
 def load_referentiel_excel() -> pd.DataFrame:
     """Charge le fichier Excel référentiel PMAC."""
-    filepath = get_path("raw") / "referentiels" / "etoile_b" / REFERENTIEL_FILENAME
+    filepath = get_raw_source_path("referentiels") / REFERENTIEL_FILENAME
     
     if not filepath.exists():
         raise FileNotFoundError(

@@ -58,22 +58,16 @@ CONFIG = load_etl_config()
 
 def get_raw_source_path(source_name: str) -> Path:
     """
-    Retourne le chemin absolu vers les fichiers bruts d'une source.
-    1. Cherche d'abord dans le .env (ex: PATH_RAW_PMAC)
-    2. Sinon, utilise le chemin par défaut (data/raw/source_name)
+    Retourne le chemin absolu vers le dossier source contenant les fichiers.
+    Lit d'abord dans le .env (ex: PATH_RAW_PMAC), sinon utilise data/raw/source_name.
     """
-    # 1. Chercher dans .env (clé en majuscule)
     env_key = f"PATH_RAW_{source_name.upper()}"
     env_path = get_env(env_key)
     
     if env_path:
         path = Path(env_path)
-        # Si le chemin dans .env est relatif, le résoudre par rapport à la racine
         if not path.is_absolute():
             path = PROJECT_ROOT / path
         return path
     
-    # 2. Fallback par défaut (data/raw/source_name)
-    logger = __import__("logging").getLogger(__name__)
-    logger.debug(f"Variable {env_key} non trouvée dans .env, utilisation du défaut.")
     return get_path("raw") / source_name

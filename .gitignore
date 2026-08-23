@@ -69,7 +69,7 @@ desktop.ini
 
 
 
-# docker-compose.yml
+docker-compose.yml
 
-# docker/
-# Makefile
+docker/
+Makefile

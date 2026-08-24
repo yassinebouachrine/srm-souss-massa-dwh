@@ -47,6 +47,7 @@ desktop.ini
 # ─── Données ETL (Exclure les données sensibles/lourdes) ────
 data/raw/**/*.xlsx
 data/raw/**/*.csv
+data/raw/**/*.txt
 data/bronze/
 data/silver/
 data/rejects/

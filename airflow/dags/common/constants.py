@@ -21,7 +21,6 @@ START_DATE = datetime(2026, 8, 1, tzinfo=TZ_MAROC)
 # ═══════════════════════════════════════════════════════════════
 # SCHEDULES (cron format)
 # ═══════════════════════════════════════════════════════════════
-
 # Quotidien à 2h du matin (heure Maroc)
 SCHEDULE_DAILY_2AM = "0 2 * * *"
 
@@ -51,11 +50,13 @@ SCRIPTS_ROOT = f"{PROJECT_ROOT}/scripts"
 # ═══════════════════════════════════════════════════════════════
 
 DEFAULT_ARGS = {
-    "owner": "srm_data_team",
+    "owner": "airflow_admin",
     "depends_on_past": False,
-    "email": ["yassine.bouachrine@srm.ma"],
-    "email_on_failure": False,   # À activer quand SMTP configuré
+
+    "email": ["bouachrinyassin0@gmail.com"],
+    "email_on_failure": False,
     "email_on_retry": False,
+
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
     "execution_timeout": timedelta(hours=2),
@@ -77,3 +78,5 @@ TAG_STREAMLIT = "streamlit"
 TAG_EXCEL = "excel_legacy"
 TAG_REFERENTIELS = "referentiels"
 TAG_DWH = "dwh"
+
+

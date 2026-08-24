@@ -40,8 +40,75 @@ def render_administration():
         _render_create_user(user)
 
 
+# def _render_users_list(current_user):
+#     """Liste des utilisateurs avec possibilité d'activer/désactiver."""
+#     st.markdown(render_section_open("Comptes utilisateurs", "USERS"),
+#                 unsafe_allow_html=True)
+
+#     users = AuthManager.get_all_users()
+#     if not users:
+#         st.markdown(render_empty("USERS", "Aucun utilisateur"), unsafe_allow_html=True)
+#         st.markdown(render_section_close(), unsafe_allow_html=True)
+#         return
+
+#     role_labels = {
+#         "agent_dp": "Agent DP",
+#         "admin_dp": "Admin DP",
+#         "admin_regional": "Admin Régional",
+#         "super_admin": "Super Admin",
+#     }
+
+#     rows = []
+#     for u in users:
+#         rows.append({
+#             "Identifiant": u.get("username", "—"),
+#             "Nom complet": u.get("nom_complet", "—"),
+#             "Rôle": role_labels.get(u.get("role"), u.get("role", "—")),
+#             "Province": u.get("code_province") or "—",
+#             "Actif": "Oui" if u.get("est_actif") else "Non",
+#             "Dernière connexion": format_datetime(u.get("derniere_connexion")),
+#             "Créé le": format_datetime(u.get("date_creation")),
+#         })
+
+#     df = pd.DataFrame(rows)
+#     st.dataframe(df, use_container_width=True, hide_index=True)
+
+#     st.markdown("---")
+#     st.markdown("**Activer / Désactiver un compte**")
+
+#     sel = st.selectbox(
+#         "Sélectionner un utilisateur",
+#         [(u["id_utilisateur"], u["username"], u["est_actif"]) for u in users],
+#         format_func=lambda x: f"{x[1]}  ({'actif' if x[2] else 'inactif'})",
+#         key="user_toggle",
+#     )
+
+#     b1, b2, _ = st.columns([1.5, 1.5, 3])
+
+#     with b1:
+#         st.markdown('<div class="btn-success">', unsafe_allow_html=True)
+#         if st.button("Activer le compte", use_container_width=True, key="btn_activate"):
+#             AuthManager.toggle_user_status(sel[0], True)
+#             AuthManager.log_action(current_user["id"], "ACTIVATE_USER",
+#                                     "utilisateurs", sel[0])
+#             st.success(f"Compte {sel[1]} activé.")
+#             st.rerun()
+#         st.markdown('</div>', unsafe_allow_html=True)
+
+#     with b2:
+#         st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+#         if st.button("Désactiver le compte", use_container_width=True, key="btn_deactivate"):
+#             AuthManager.toggle_user_status(sel[0], False)
+#             AuthManager.log_action(current_user["id"], "DEACTIVATE_USER",
+#                                     "utilisateurs", sel[0])
+#             st.warning(f"Compte {sel[1]} désactivé.")
+#             st.rerun()
+#         st.markdown('</div>', unsafe_allow_html=True)
+
+#     st.markdown(render_section_close(), unsafe_allow_html=True)
+
 def _render_users_list(current_user):
-    """Liste des utilisateurs avec possibilité d'activer/désactiver."""
+    """Liste des utilisateurs avec possibilité d'activer/désactiver/supprimer."""
     st.markdown(render_section_open("Comptes utilisateurs", "USERS"),
                 unsafe_allow_html=True)
 
@@ -74,20 +141,35 @@ def _render_users_list(current_user):
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.markdown("**Activer / Désactiver un compte**")
 
+    # ── Sélecteur commun ──
     sel = st.selectbox(
         "Sélectionner un utilisateur",
-        [(u["id_utilisateur"], u["username"], u["est_actif"]) for u in users],
+        [(u["id_utilisateur"], u["username"], u["est_actif"], u["role"]) for u in users],
         format_func=lambda x: f"{x[1]}  ({'actif' if x[2] else 'inactif'})",
         key="user_toggle",
     )
 
+    # Protection : on ne peut pas agir sur soi-même
+    is_self = (sel[0] == current_user["id"])
+    if is_self:
+        st.markdown(
+            "<div style='background:#FEF3C7;border-left:3px solid #F59E0B;"
+            "padding:0.6rem 0.9rem;border-radius:4px;font-size:0.85rem;color:#78350F;"
+            "margin-bottom:0.75rem;'>"
+            "Vous ne pouvez pas modifier votre propre compte depuis cette interface."
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+    # ── Activer / Désactiver ──
+    st.markdown("**Activer / Désactiver**")
     b1, b2, _ = st.columns([1.5, 1.5, 3])
 
     with b1:
         st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-        if st.button("Activer le compte", use_container_width=True, key="btn_activate"):
+        if st.button("Activer le compte", use_container_width=True,
+                     key="btn_activate", disabled=is_self):
             AuthManager.toggle_user_status(sel[0], True)
             AuthManager.log_action(current_user["id"], "ACTIVATE_USER",
                                     "utilisateurs", sel[0])
@@ -97,7 +179,8 @@ def _render_users_list(current_user):
 
     with b2:
         st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-        if st.button("Désactiver le compte", use_container_width=True, key="btn_deactivate"):
+        if st.button("Désactiver le compte", use_container_width=True,
+                     key="btn_deactivate", disabled=is_self):
             AuthManager.toggle_user_status(sel[0], False)
             AuthManager.log_action(current_user["id"], "DEACTIVATE_USER",
                                     "utilisateurs", sel[0])
@@ -105,7 +188,82 @@ def _render_users_list(current_user):
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── Suppression (super_admin uniquement) ──
+    if current_user["role"] == "super_admin":
+        st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+        st.markdown("**Supprimer définitivement**")
+
+        # Empêcher la suppression de son propre compte ou d'un autre super_admin
+        target_role = sel[3]
+        can_delete = (
+            not is_self
+            and not (target_role == "super_admin" and current_user["role"] == "super_admin"
+                     and sel[0] != current_user["id"])
+        )
+        # En pratique : super_admin ne peut pas supprimer un autre super_admin
+        can_delete = not is_self and target_role != "super_admin"
+
+        confirm_key = f"confirm_delete_user_{sel[0]}"
+        if confirm_key not in st.session_state:
+            st.session_state[confirm_key] = False
+
+        d1, d2, _ = st.columns([1.5, 1.5, 3])
+
+        with d1:
+            if not can_delete:
+                st.markdown(
+                    "<div style='font-size:0.8rem;color:#9CA3AF;font-style:italic;"
+                    "padding-top:0.4rem;'>"
+                    + ("Impossible de supprimer son propre compte."
+                       if is_self else
+                       "Les super_admin ne peuvent pas être supprimés ici.")
+                    + "</div>",
+                    unsafe_allow_html=True
+                )
+            elif not st.session_state[confirm_key]:
+                st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+                if st.button("🗑 Supprimer le compte", use_container_width=True,
+                             key="btn_delete_user"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='background:#FEF2F2;border:1px solid #FCA5A5;"
+                    f"border-radius:6px;padding:0.75rem;font-size:0.85rem;"
+                    f"color:#991B1B;margin-bottom:0.5rem;'>"
+                    f"⚠️ Supprimer <strong>{sel[1]}</strong> ? "
+                    f"Cette action est <strong>irréversible</strong>."
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                c_yes, c_no = st.columns(2)
+                with c_yes:
+                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+                    if st.button("Confirmer", use_container_width=True,
+                                 key="btn_delete_confirm"):
+                        result = AuthManager.delete_user(sel[0])
+                        if result["success"]:
+                            AuthManager.log_action(
+                                current_user["id"], "DELETE_USER",
+                                "utilisateurs", sel[0],
+                                details={"username": sel[1]}
+                            )
+                            st.session_state[confirm_key] = False
+                            st.success(f"Compte « {sel[1]} » supprimé.")
+                            st.rerun()
+                        else:
+                            st.error(result["message"])
+                    st.markdown('</div>', unsafe_allow_html=True)
+                with c_no:
+                    if st.button("Annuler", use_container_width=True,
+                                 key="btn_delete_cancel"):
+                        st.session_state[confirm_key] = False
+                        st.rerun()
+
     st.markdown(render_section_close(), unsafe_allow_html=True)
+
+
 
 
 def _render_audit_logs():

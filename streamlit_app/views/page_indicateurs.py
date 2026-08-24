@@ -156,12 +156,23 @@ def _render_new_entry(user, id_province, code_province, province_name):
                         unsafe_allow_html=True
                     )
                 with col_val:
-                    val = st.number_input(
-                        f"Valeur {ind['code_indicateur']}",
-                        min_value=0.0, value=0.0, step=0.01, format="%.2f",
-                        key=f"val_{ind['code_indicateur']}",
-                        label_visibility="collapsed",
-                    )
+                    # ✅ FIX: Typage strict Entier vs Réel selon l'unité
+                    is_integer = ind['unite'] in ['U', 'An', '']
+                    
+                    if is_integer:
+                        val = st.number_input(
+                            f"Valeur {ind['code_indicateur']}",
+                            min_value=0, value=0, step=1,
+                            key=f"val_{ind['code_indicateur']}",
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        val = st.number_input(
+                            f"Valeur {ind['code_indicateur']}",
+                            min_value=0.0, value=0.0, step=0.01, format="%.2f",
+                            key=f"val_{ind['code_indicateur']}",
+                            label_visibility="collapsed",
+                        )
 
                 vals[ind["code_indicateur"]] = {
                     "valeur": val,
@@ -212,13 +223,24 @@ def _render_new_entry(user, id_province, code_province, province_name):
                             unsafe_allow_html=True
                         )
                     with col_val:
-                        val = st.number_input(
-                            f"Valeur {ind['code_indicateur']}",
-                            min_value=0.0, value=0.0, step=0.01, format="%.2f",
-                            key=f"val_{ind['code_indicateur']}",
-                            label_visibility="collapsed",
-                            help="Laissez à 0 si pas de changement ce mois-ci",
-                        )
+                        # ✅ FIX: Typage strict Entier vs Réel
+                        is_integer = ind['unite'] in ['U', 'An', '']
+                        if is_integer:
+                            val = st.number_input(
+                                f"Valeur {ind['code_indicateur']}",
+                                min_value=0, value=0, step=1,
+                                key=f"val_{ind['code_indicateur']}",
+                                label_visibility="collapsed",
+                                help="Laissez à 0 si pas de changement ce mois-ci",
+                            )
+                        else:
+                            val = st.number_input(
+                                f"Valeur {ind['code_indicateur']}",
+                                min_value=0.0, value=0.0, step=0.01, format="%.2f",
+                                key=f"val_{ind['code_indicateur']}",
+                                label_visibility="collapsed",
+                                help="Laissez à 0 si pas de changement ce mois-ci",
+                            )
 
                     vals[ind["code_indicateur"]] = {
                         "valeur": val,
@@ -328,7 +350,8 @@ def render_draft_lots(data_type, id_province, user, drafts):
                     disabled=["ID", "Code", "Indicateur", "Catégorie", "Unité"],
                     column_config={
                         "ID": None,
-                        "Valeur": st.column_config.NumberColumn("Valeur", format="%.2f", min_value=0),
+                        # ✅ FIX: Permettre l'affichage natif des entiers vs réels sans forcer format="%.2f"
+                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
                     },
                     key=f"draft_ind_{lot['lot_id']}",
                 )
@@ -344,7 +367,8 @@ def render_draft_lots(data_type, id_province, user, drafts):
                     disabled=["ID", "Code", "Type"],
                     column_config={
                         "ID": None,
-                        "Valeur": st.column_config.NumberColumn("Valeur", format="%.2f", min_value=0),
+                        # ✅ FIX: Permettre l'affichage natif sans format forcé
+                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
                     },
                     key=f"draft_rec_{lot['lot_id']}",
                 )
@@ -446,10 +470,11 @@ def render_rejected_lots(data_type, id_province, user, rejected):
             else "Rejeté par Admin Régional"
         )
 
+        # ✅ FIX: expanded=False par défaut pour éviter l'erreur React 185
         with st.expander(
             f"{status_label} — {get_mois_name(lot['mois'])} {lot['annee']} — "
             f"{lot['nb_enregistrements']} enreg.",
-            expanded=True,
+            expanded=False, 
         ):
             if data_type == "indicateurs":
                 details = get_staging_indicateurs(lot_id=lot["lot_id"])
@@ -497,7 +522,8 @@ def render_rejected_lots(data_type, id_province, user, rejected):
                     disabled=["ID", "Code", "Indicateur", "Catégorie", "Unité"],
                     column_config={
                         "ID": None,
-                        "Valeur": st.column_config.NumberColumn("Valeur", format="%.2f", min_value=0),
+                        # ✅ FIX
+                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
                     },
                     key=f"edit_ind_{lot['lot_id']}",
                 )
@@ -513,7 +539,8 @@ def render_rejected_lots(data_type, id_province, user, rejected):
                     disabled=["ID", "Code", "Type"],
                     column_config={
                         "ID": None,
-                        "Valeur": st.column_config.NumberColumn("Valeur", format="%.2f", min_value=0),
+                        # ✅ FIX
+                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
                     },
                     key=f"edit_rec_{lot['lot_id']}",
                 )
@@ -537,7 +564,6 @@ def render_rejected_lots(data_type, id_province, user, rejected):
                                                else original.get("libelle_reclamation"))
 
                             if data_type == "indicateurs":
-                                # Utiliser la fonction avec historique
                                 update_staging_record_with_history(
                                     "indicateurs", original["id_staging"],
                                     {"valeur_indicateur": float(row["Valeur"])},

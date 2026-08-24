@@ -69,19 +69,14 @@ def get_global_css() -> str:
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
         background-color: #FFFFFF !important;
         color: #111827 !important;
-        font-size: 14px !important;
+        font-size: 13px !important;
     }
 
-    /* Zoom 90% sur le contenu principal uniquement */
-    .main .block-container {
-        zoom: 0.9;
-        -moz-transform: scale(0.9);
-        -moz-transform-origin: 0 0;
-    }
 
     .block-container {
-        padding: 2.5rem 2.5rem 3.5rem 2.5rem !important;
-        max-width: 1500px !important;
+        padding: 2rem 2rem 3rem 2rem !important;
+        max-width: 1400px !important;
+        width: 100% !important;
         background: #FFFFFF !important;
     }
 
@@ -325,6 +320,35 @@ def get_global_css() -> str:
     .stNumberInput > div > div > input:focus, .stTextInput > div > div > input:focus {
         border-color: #111827 !important; box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
     }
+
+
+    /* Stabilisation des tableaux — empêche le décalage vers la droite */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+
+    [data-testid="stDataFrame"] > div,
+    [data-testid="stDataEditor"] > div {
+        width: 100% !important;
+    }
+
+    /* Empêcher les colonnes Streamlit de déborder */
+    div[data-testid="column"] {
+        min-width: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* Stabiliser le layout général */
+    section.main > div {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+
+
     </style>
     """
 

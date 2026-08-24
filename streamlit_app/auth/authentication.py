@@ -279,3 +279,54 @@ class AuthManager:
             """,
             (activate, user_id),
         )
+
+
+    @staticmethod
+    def delete_user(user_id: int) -> dict:
+        """Supprime définitivement un compte utilisateur et ses dépendances (sessions/logs)."""
+        try:
+            # 1. Vérifier si l'utilisateur a des données métiers (Staging)
+            # S'il a déjà saisi des données, on ne peut pas le supprimer car cela casserait la traçabilité
+            # Dans ce cas, il vaut mieux désactiver le compte.
+            from db.connection import execute_query
+            
+            check_data = execute_query(
+                """
+                SELECT 
+                    (SELECT COUNT(*) FROM app_staging.staging_indicateurs_dp WHERE soumis_par = %s OR valide_par_dp = %s OR valide_par_regional = %s) +
+                    (SELECT COUNT(*) FROM app_staging.staging_reclamations_dp WHERE soumis_par = %s OR valide_par_dp = %s OR valide_par_regional = %s) 
+                as total_actions
+                """,
+                (user_id, user_id, user_id, user_id, user_id, user_id),
+                fetch="one"
+            )
+
+            if check_data and check_data["total_actions"] > 0:
+                return {
+                    "success": False, 
+                    "message": "Impossible de supprimer ce compte car il est lié à des saisies ou validations existantes. Veuillez plutôt désactiver le compte pour préserver la traçabilité."
+                }
+
+            # 2. Supprimer les sessions de cet utilisateur (pour lever la contrainte FK)
+            execute_insert(
+                "DELETE FROM app_auth.sessions WHERE id_utilisateur = %s",
+                (user_id,)
+            )
+            
+            # 3. Supprimer les logs d'audit de cet utilisateur
+            execute_insert(
+                "DELETE FROM app_auth.audit_logs WHERE id_utilisateur = %s",
+                (user_id,)
+            )
+
+            # 4. Supprimer le compte utilisateur
+            execute_insert(
+                "DELETE FROM app_auth.utilisateurs WHERE id_utilisateur = %s",
+                (user_id,)
+            )
+            
+            return {"success": True, "message": "Compte et historique d'activité supprimés avec succès."}
+            
+        except Exception as e:
+            logger.error(f"Erreur suppression utilisateur {user_id}: {e}")
+            return {"success": False, "message": f"Erreur lors de la suppression : {e}"}

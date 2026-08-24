@@ -1,8 +1,8 @@
 """
 Script de refresh des vues matérialisées Power BI.
-À exécuter périodiquement via Airflow.
+Exécutable en CLI ou importable dans Airflow.
 
-Usage :
+Usage CLI :
     python scripts/refresh_pbi_views.py                # Refresh toutes
     python scripts/refresh_pbi_views.py --view carte   # Refresh spécifique
 """
@@ -25,7 +25,6 @@ logger = get_logger(__name__)
 # Vues matérialisées à refresh
 MATERIALIZED_VIEWS = {
     "carte": "dwh.vw_pbi_carte_points_enrichie",
-    # Ajouter d'autres vues matérialisées ici plus tard
 }
 
 
@@ -56,16 +55,10 @@ def refresh_view(view_name: str, concurrently: bool = True) -> dict:
         return {"status": "error", "view": view_name, "error": str(e)}
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Refresh vues matérialisées PBI")
-    parser.add_argument(
-        "--view",
-        choices=list(MATERIALIZED_VIEWS.keys()) + ["all"],
-        default="all",
-        help="Vue à refresh (défaut: all)",
-    )
-    args = parser.parse_args()
-    
+def run_refresh_views(view_name: str = "all") -> dict:
+    """
+    Fonction principale appelée par Airflow ou Python sans passer par argparse.
+    """
     logger.info("=" * 70)
     logger.info("🔄 REFRESH VUES MATÉRIALISÉES POWER BI")
     logger.info(f"   Démarré à : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -73,10 +66,10 @@ def main():
     
     results = []
     
-    if args.view == "all":
+    if view_name == "all":
         views_to_refresh = MATERIALIZED_VIEWS.values()
     else:
-        views_to_refresh = [MATERIALIZED_VIEWS[args.view]]
+        views_to_refresh = [MATERIALIZED_VIEWS.get(view_name, view_name)]
     
     for view in views_to_refresh:
         result = refresh_view(view)
@@ -84,7 +77,7 @@ def main():
     
     # Résumé
     logger.info("=" * 70)
-    logger.info("📊 RÉSUMÉ")
+    logger.info("📊 RÉSUMÉ REFRESH PBI")
     logger.info("=" * 70)
     
     for r in results:
@@ -94,6 +87,20 @@ def main():
             logger.error(f"❌ {r['view']} : {r.get('error')}")
     
     logger.info("=" * 70)
+    return {"status": "success", "results": results}
+
+
+def main():
+    """Point d'entrée CLI (ligne de commande uniquement)."""
+    parser = argparse.ArgumentParser(description="Refresh vues matérialisées PBI")
+    parser.add_argument(
+        "--view",
+        choices=list(MATERIALIZED_VIEWS.keys()) + ["all"],
+        default="all",
+        help="Vue à refresh (défaut: all)",
+    )
+    args = parser.parse_args()
+    run_refresh_views(args.view)
 
 
 if __name__ == "__main__":

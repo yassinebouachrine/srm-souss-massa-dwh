@@ -521,6 +521,14 @@ def update_staging_record_with_history(table, id_staging, field_updates: dict,
 
     # 2. Comparer et logger les changements
     for field, new_value in field_updates.items():
+        
+        # ✅ FIX: Éviter le double historique pour les réclamations
+        # Si on met à jour valeur_brute ET nombre_reclamations en même temps, 
+        # on ne loggue que la valeur_brute dans l'historique.
+        if field in ["nombre_reclamations", "temps_moyen_coupure_h", "delai_moyen_traitement_j"]:
+            if "valeur_brute" in field_updates:
+                continue
+
         old_value = current.get(field)
 
         # Convertir pour comparaison (éviter les faux positifs)
@@ -560,7 +568,6 @@ def update_staging_record_with_history(table, id_staging, field_updates: dict,
         f"UPDATE {tbl} SET {', '.join(set_clauses)} WHERE id_staging = %s",
         tuple(params),
     )
-
 
 def get_dashboard_stats_filtered(id_province=None, annee=None, mois=None,
                                   role_view=None):

@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-# SRM Souss-Massa - Git Ignore
+# SRM Souss-Massa - Git Ignore (Version Finale Prod)
 # ═══════════════════════════════════════════════════════════
 
 # ─── Python ───────────────────────────────────────────────
@@ -18,28 +18,33 @@ venv/
 env/
 .venv/
 ENV/
+airflow_env/
 
-# ─── Variables d'environnement ────────────────────────────
+# ─── Variables d'environnement & Secrets (NE PAS COMMITTER) ──
 .env
 .env.local
-# .env.example
-.env.production
 .env.docker
+.env.production
+.env.staging
 *.pem
 *.key
 
-# ─── IDE ──────────────────────────────────────────────────
+# Conserver uniquement le template d'exemple
+!.env.example
+
+# ─── IDE & OS ─────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # ─── Streamlit ────────────────────────────────────────────
 .streamlit/secrets.toml
 
-# Données ETL (ne pas commiter)
+# ─── Données ETL (Exclure les données sensibles/lourdes) ────
 data/raw/**/*.xlsx
 data/raw/**/*.csv
 data/bronze/
@@ -47,29 +52,16 @@ data/silver/
 data/rejects/
 data/logs/
 
-# Garder la structure des dossiers vides
+# Conserver la structure des dossiers via .gitkeep
 !data/raw/**/.gitkeep
 !data/bronze/.gitkeep
 !data/silver/.gitkeep
 !data/rejects/.gitkeep
 !data/logs/.gitkeep
-# ─── Logs ─────────────────────────────────────────────────
+
+# ─── Logs & Backups ───────────────────────────────────────
 *.log
 logs/
-
-# ─── PostgreSQL ───────────────────────────────────────────
+airflow/logs/
 *.dump
 *.sql.gz
-
-# ─── OS ───────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-desktop.ini
-
-
-
-
-# docker-compose.yml
-
-# docker/
-# Makefile

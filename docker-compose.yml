@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-airflow-common:
   &airflow-common
   build:
@@ -12,13 +10,12 @@ x-airflow-common:
     _AIRFLOW_DB_UPGRADE: 'true'
     _AIRFLOW_WWW_USER_CREATE: 'true'
     _AIRFLOW_WWW_USER_USERNAME: 'admin'
-    _AIRFLOW_WWW_USER_PASSWORD: '1342'
+    _AIRFLOW_WWW_USER_PASSWORD: '${POSTGRES_PASSWORD:-1342}'
     _AIRFLOW_WWW_USER_ROLE: 'Admin'
     _AIRFLOW_WWW_USER_EMAIL: 'admin@srm.ma'
     _AIRFLOW_WWW_USER_FIRSTNAME: 'Admin'
     _AIRFLOW_WWW_USER_LASTNAME: 'SRM'
   volumes:
-    # On monte tes dossiers locaux directement dans le conteneur
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
@@ -37,8 +34,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: srm_admin
-      POSTGRES_PASSWORD: 1342
-      # Un script d'initialisation créera les bases multiples (airflow et DWH)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1342}
       POSTGRES_MULTIPLE_DATABASES: airflow,srm_datawarehouse
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
@@ -50,9 +46,9 @@ services:
       start_period: 5s
     restart: always
     ports:
-      - "5432:5432" # Expose le port pour que tu puisses t'y connecter depuis DBeaver/PBI localement
+      - "5432:5432"
 
-  # 2. Initialisation Airflow (s'exécute 1 fois au démarrage)
+  # 2. Initialisation Airflow
   airflow-init:
     <<: *airflow-common
     command: version
@@ -64,7 +60,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
 
-  # 3. Le Scheduler (Moteur d'exécution)
+  # 3. Le Scheduler
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -89,9 +85,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-
-
-  # 5. Application Streamlit (Saisie des indicateurs & réclamations)
+  # 5. Application Streamlit
   streamlit:
     build:
       context: .
@@ -101,14 +95,11 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      # Montage en volume : si tu modifies un fichier dans streamlit_app/ sur ton PC, 
-      # ça se mettra à jour en temps réel dans Docker !
       - ./streamlit_app:/app
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
-
 
 volumes:
   postgres-db-volume:

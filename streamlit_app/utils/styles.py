@@ -1,4 +1,6 @@
 # utils/styles.py
+"""Styles CSS + helpers UI — SRM Souss-Massa."""
+
 import base64
 from pathlib import Path
 
@@ -48,10 +50,6 @@ class Icon:
     FILTER = '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>'
     LAYERS = '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'
     MESSAGE = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
-    MENU = '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
-    CHEVRON_LEFT = '<polyline points="15 18 9 12 15 6"/>'
-    CHEVRON_RIGHT = '<polyline points="9 18 15 12 9 6"/>'
-    LOG_OUT = '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'
 
     @classmethod
     def render(cls, name, size=16, color="currentColor", sw=2):
@@ -59,298 +57,377 @@ class Icon:
         return cls._base(p, size, color, sw) if p else ""
 
 
-def get_global_css() -> str:
-    return """
+def get_global_css(sidebar_open: bool = True) -> str:
+    """Une seule balise <style>, concaténation simple (pas de f-string sur le CSS)."""
+
+    if sidebar_open:
+        sidebar_css = """
+        section[data-testid="stSidebar"] {
+            display: flex !important;
+            flex-direction: column !important;
+            visibility: visible !important;
+            transform: none !important;
+            position: relative !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 260px !important;
+            min-width: 260px !important;
+            max-width: 260px !important;
+            margin-left: 0 !important;
+            background-color: #FFFFFF !important;
+            border-right: 1px solid #E5E7EB !important;
+            z-index: 100 !important;
+        }
+        section.main, [data-testid="stMain"] {
+            flex: 1 !important;
+            width: calc(100vw - 260px) !important;
+            max-width: calc(100vw - 260px) !important;
+        }
+        """
+    else:
+        sidebar_css = """
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            overflow: hidden !important;
+        }
+        section.main, [data-testid="stMain"] {
+            flex: 1 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+        }
+        """
+
+    # IMPORTANT : une seule balise <style> — concaténation, pas de f"{css}"
+    css = """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* ═══════ BASE — Taille réduite (équivalent zoom 90%) ═══════ */
-    html, body, [class*="css"], .stApp, [data-testid="stAppViewContainer"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    * { box-sizing: border-box !important; }
+    html, body, .stApp {
+        font-family: 'Inter', sans-serif !important;
         background-color: #FFFFFF !important;
         color: #111827 !important;
         font-size: 13px !important;
     }
 
+    [data-testid="stAppViewContainer"] {
+        display: flex !important;
+        flex-direction: row !important;
+    }
+    """ + sidebar_css + """
+
+    section[data-testid="stSidebar"] > div { background-color: #FFFFFF !important; }
+    section[data-testid="stSidebar"] .block-container { padding: 1rem 0.75rem !important; }
 
     .block-container {
-        padding: 2rem 2rem 3rem 2rem !important;
+        padding: 1.5rem 2rem 3rem 2rem !important;
         max-width: 1400px !important;
         width: 100% !important;
-        background: #FFFFFF !important;
     }
 
-    #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] {
+    #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stSidebarCollapseButton"], [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stExpandSidebarButton"], header[data-testid="stHeader"] {
         display: none !important;
     }
 
-    /* ═══════ TOGGLE SIDEBAR ═══════ */
-    [data-testid="stSidebarCollapseButton"],
-    [data-testid="stExpandSidebarButton"],
-    [data-testid="baseButton-headerNoPadding"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        position: fixed !important;
-        top: 0.65rem !important;
-        left: 0.65rem !important;
-        z-index: 999999 !important;
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 8px !important;
-        padding: 0.35rem !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
-        width: 36px !important;
-        height: 36px !important;
-        align-items: center !important;
-        justify-content: center !important;
-        transition: background 0.15s ease, border-color 0.15s ease !important;
-    }
-
-    [data-testid="stSidebarCollapseButton"]:hover,
-    [data-testid="stExpandSidebarButton"]:hover,
-    [data-testid="baseButton-headerNoPadding"]:hover {
-        background: #F9FAFB !important;
-        border-color: #9CA3AF !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
-    }
-
-    [data-testid="stSidebarCollapseButton"] svg,
-    [data-testid="stExpandSidebarButton"] svg,
-    [data-testid="baseButton-headerNoPadding"] svg {
-        width: 18px !important;
-        height: 18px !important;
-        color: #374151 !important;
-    }
-
-    section[data-testid="stSidebar"][aria-expanded="true"] ~ * [data-testid="stSidebarCollapseButton"],
-    section[data-testid="stSidebar"]:not([aria-expanded="false"]) ~ div [data-testid="stSidebarCollapseButton"] {
-        left: 220px !important;
-    }
-
-    button[kind="header"] {
-        display: block !important;
-        visibility: visible !important;
-        z-index: 999999 !important;
-    }
-
-    [data-testid="collapsedControl"] {
-        display: block !important;
-        visibility: visible !important;
-        z-index: 999999 !important;
-    }
-
-    /* ═══════ SIDEBAR (taille normale, pas de zoom) ═══════ */
-    section[data-testid="stSidebar"] {
-        background: #FFFFFF !important;
-        border-right: 1px solid #E5E7EB !important;
-        min-width: 260px !important;
-        max-width: 260px !important;
-        transition: transform 0.2s ease !important;
-        zoom: 1 !important;
-        -moz-transform: none !important;
-    }
-
-    section[data-testid="stSidebar"] > div { background: #FFFFFF !important; }
-    section[data-testid="stSidebar"] .block-container { padding: 1.5rem 0.75rem !important; zoom: 1 !important; -moz-transform: none !important; }
-    section[data-testid="stSidebar"] hr { border-color: #F3F4F6 !important; margin: 0.75rem 0 !important; }
-
+    /* Boutons nav sidebar */
     section[data-testid="stSidebar"] .stButton > button {
-        background: transparent !important; border: none !important; color: #4B5563 !important;
-        text-align: left !important; padding: 0.55rem 0.85rem !important; border-radius: 6px !important;
-        font-size: 0.875rem !important; font-weight: 500 !important; width: 100% !important;
-        justify-content: flex-start !important; box-shadow: none !important;
+        background: transparent !important;
+        border: none !important;
+        color: #4B5563 !important;
+        text-align: left !important;
+        padding: 0.55rem 0.85rem !important;
+        border-radius: 6px !important;
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        box-shadow: none !important;
     }
-    section[data-testid="stSidebar"] .stButton > button:hover { background: #F3F4F6 !important; color: #111827 !important; }
-    section[data-testid="stSidebar"] .nav-active .stButton > button { background: #F3F4F6 !important; color: #111827 !important; font-weight: 600 !important; }
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: #F3F4F6 !important;
+        color: #111827 !important;
+    }
+    section[data-testid="stSidebar"] .nav-active .stButton > button {
+        background: #F3F4F6 !important;
+        color: #111827 !important;
+        font-weight: 600 !important;
+    }
 
-    .sb-logo-wrap { text-align: center; padding: 0.5rem 0.5rem 1rem; border-bottom: 1px solid #F3F4F6; margin-bottom: 0.75rem; }
-    .sb-logo-img { max-width: 100px !important; margin: 0 auto 0.5rem !important; display: block !important; }
-    .sb-logo-title { font-size: 0.85rem !important; font-weight: 700 !important; color: #111827 !important; }
-    .sb-logo-sub { font-size: 0.65rem !important; color: #9CA3AF !important; font-weight: 600; margin-top: 0.15rem; letter-spacing: 1px; }
+    /* Branding sidebar */
+    .sb-logo-wrap {
+        text-align: center;
+        padding: 0.25rem 0.5rem 1rem;
+        border-bottom: 1px solid #F3F4F6;
+        margin-bottom: 0.75rem;
+    }
+    .sb-logo-img {
+        max-width: 100px !important;
+        margin: 0 auto 0.5rem !important;
+        display: block !important;
+    }
+    .sb-logo-title {
+        font-size: 0.85rem !important;
+        font-weight: 700 !important;
+        color: #111827 !important;
+    }
+    .sb-logo-sub {
+        font-size: 0.65rem !important;
+        color: #9CA3AF !important;
+        font-weight: 600;
+        margin-top: 0.15rem;
+        letter-spacing: 1px;
+    }
 
-    .sb-user { padding: 0.75rem !important; background: #F9FAFB !important; border-radius: 8px !important; margin-bottom: 0.5rem !important; border: 1px solid #F3F4F6; }
-    .sb-user-avatar { width: 34px; height: 34px; border-radius: 50%; background: #111827; color: #FFF !important; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .sb-user {
+        padding: 0.75rem !important;
+        background: #F9FAFB !important;
+        border-radius: 8px !important;
+        margin-bottom: 0.5rem !important;
+        border: 1px solid #F3F4F6;
+    }
+    .sb-user-avatar {
+        width: 34px; height: 34px; border-radius: 50%;
+        background: #111827; color: #FFF !important;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 600; font-size: 0.8rem; margin-bottom: 0.5rem;
+    }
     .sb-user-name { font-size: 0.82rem !important; font-weight: 600 !important; color: #111827 !important; }
     .sb-user-role { font-size: 0.7rem !important; color: #6B7280 !important; margin-top: 0.15rem; }
-    .sb-user-province { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.68rem !important; color: #4B5563 !important; margin-top: 0.45rem; padding: 0.15rem 0.45rem; background: #FFF; border: 1px solid #E5E7EB; border-radius: 4px; }
-    .nav-section { font-size: 0.65rem !important; font-weight: 700 !important; color: #9CA3AF !important; text-transform: uppercase; letter-spacing: 0.8px; padding: 0.7rem 0.85rem 0.3rem !important; }
+    .sb-user-province {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        font-size: 0.68rem !important; color: #4B5563 !important;
+        margin-top: 0.45rem; padding: 0.15rem 0.45rem;
+        background: #FFF; border: 1px solid #E5E7EB; border-radius: 4px;
+    }
+    /* ══════════ SIDEBAR : Sections séparées et claires ══════════ */
+    .nav-section {
+        font-size: 0.68rem !important;
+        font-weight: 700 !important;
+        color: #6B7280 !important;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        padding: 0.9rem 0.85rem 0.35rem !important;
+        margin-top: 0.75rem;
+        border-top: 1px solid #E5E7EB;
+        position: relative;
+    }
 
-    /* ═══════ BREADCRUMB ═══════ */
-    .breadcrumb { font-size: 0.78rem; color: #6B7280; margin-bottom: 0.75rem; padding: 0.25rem 0; display: flex; align-items: center; gap: 0.4rem; }
-    .breadcrumb-sep { color: #D1D5DB; }
-    .breadcrumb-item { color: #9CA3AF; }
-    .breadcrumb-current { color: #111827; font-weight: 600; }
+    /* Première section : pas de border-top */
+    .nav-section.first-section {
+        border-top: none !important;
+        margin-top: 0.25rem !important;
+        padding-top: 0.5rem !important;
+    }
 
-    /* PAGE HEADER */
+    /* Petite icône colorée à côté du titre de section */
+    .nav-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem 0.25rem !important;
+    }
+
+    .nav-section-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .nav-section-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #6B7280;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+    }
+
+    /* Container de chaque section pour un fond léger */
+    .nav-section-wrapper {
+        background: #FAFBFC;
+        border: 1px solid #EEF0F2;
+        border-radius: 8px;
+        padding: 0.35rem 0.25rem;
+        margin: 0.4rem 0 0.6rem 0;
+    }
+
+    /* Boutons dans un wrapper de section */
+    .nav-section-wrapper .stButton > button {
+        background: transparent !important;
+        color: #4B5563 !important;
+        text-align: left !important;
+        padding: 0.5rem 0.8rem !important;
+        border-radius: 5px !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+    .nav-section-wrapper .stButton > button:hover {
+        background: #FFFFFF !important;
+        color: #111827 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+    }
+    .nav-section-wrapper .nav-active .stButton > button {
+        background: #111827 !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+    }
+    .nav-section-wrapper .nav-active .stButton > button:hover {
+        background: #1F2937 !important;
+    }
+
+    /* Bouton toggle compact « / » */
+    .srm-toggle-open button,
+    button[key="btn_sidebar_open"],
+    div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+        border-radius: 8px !important;
+    }
+
+    /* Page */
     .page-header { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #E5E7EB; }
     .ph-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111827 !important; margin: 0; }
     .ph-sub { font-size: 0.875rem !important; color: #6B7280 !important; margin-top: 0.25rem; }
 
-    /* METRIC CARDS */
     .m-card { background: #FFF !important; border: 1px solid #E5E7EB; border-radius: 8px; padding: 1.25rem; }
     .m-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
     .m-card-label { font-size: 0.72rem !important; font-weight: 600 !important; color: #6B7280 !important; text-transform: uppercase; letter-spacing: 0.3px; }
     .m-card-icon { color: #9CA3AF; display: flex; }
     .m-card-value { font-size: 1.75rem !important; font-weight: 700 !important; color: #111827 !important; line-height: 1.1; }
     .m-card-sub { font-size: 0.72rem !important; color: #9CA3AF !important; margin-top: 0.3rem; }
-    .m-card-trend { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; font-weight: 600; margin-top: 0.3rem; }
-    .trend-up { color: #059669; } .trend-down { color: #DC2626; } .trend-neutral { color: #6B7280; }
 
-    /* SECTIONS */
     .section { background: #FFF !important; border: 1px solid #E5E7EB; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.25rem; }
     .section-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem !important; font-weight: 600 !important; color: #111827 !important; margin-bottom: 0.25rem; }
-    .section-title svg { color: #6B7280; flex-shrink: 0; }
     .section-sub { font-size: 0.8rem !important; color: #6B7280 !important; margin-bottom: 1rem; }
 
-    /* INPUTS */
-    .stTextInput > div > div > input, .stTextArea > div > div > textarea, .stNumberInput > div > div > input {
-        background-color: #FFF !important; color: #111827 !important; border: 1px solid #D1D5DB !important; border-radius: 6px !important; font-size: 0.875rem !important;
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background-color: #FFF !important;
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 6px !important;
+        font-size: 0.875rem !important;
     }
-    .stTextInput > div > div > input:focus, .stNumberInput > div > div > input:focus, .stTextArea > div > div > textarea:focus {
-        border-color: #111827 !important; box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
+    .stTextInput > div > div > input:focus,
+    .stNumberInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: #111827 !important;
+        box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
     }
-    .stSelectbox > div > div { background-color: #FFF !important; border: 1px solid #D1D5DB !important; border-radius: 6px !important; }
-    input::placeholder, textarea::placeholder { color: #9CA3AF !important; opacity: 1 !important; }
-    label, label[data-testid="stWidgetLabel"], .stTextInput label, .stNumberInput label, .stSelectbox label {
-        color: #374151 !important; font-size: 0.85rem !important; font-weight: 500 !important;
-    }
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] { display: none !important; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none !important; }
 
-    /* BUTTONS */
-    .stButton > button { border-radius: 6px !important; font-weight: 500 !important; font-size: 0.875rem !important; padding: 0.55rem 1rem !important; box-shadow: none !important; }
-    .stButton > button[kind="primary"], button[data-testid="baseButton-primaryFormSubmit"] { background: #111827 !important; color: #FFF !important; border: 1px solid #111827 !important; }
-    .stButton > button[kind="primary"]:hover, button[data-testid="baseButton-primaryFormSubmit"]:hover { background: #1F2937 !important; border-color: #1F2937 !important; }
-    .stButton > button[kind="secondary"], button[data-testid="baseButton-secondaryFormSubmit"], .stButton > button:not([kind="primary"]) { background: #FFF !important; color: #374151 !important; border: 1px solid #D1D5DB !important; }
-    .stButton > button[kind="secondary"]:hover { background: #F9FAFB !important; border-color: #9CA3AF !important; color: #111827 !important; }
+    .stButton > button {
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        font-size: 0.875rem !important;
+        padding: 0.55rem 1rem !important;
+        box-shadow: none !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: #111827 !important;
+        color: #FFF !important;
+        border: 1px solid #111827 !important;
+    }
+    .stButton > button[kind="primary"]:hover { background: #1F2937 !important; }
     .btn-success .stButton > button { background: #059669 !important; color: #FFF !important; border-color: #059669 !important; }
-    .btn-success .stButton > button:hover { background: #047857 !important; border-color: #047857 !important; }
     .btn-danger .stButton > button { background: #FFF !important; color: #DC2626 !important; border-color: #FCA5A5 !important; }
     .btn-danger .stButton > button:hover { background: #FEF2F2 !important; border-color: #DC2626 !important; }
 
-    /* FORMS */
-    .stForm, div[data-testid="stForm"] { background: transparent !important; border: none !important; padding: 0 !important; }
-    .form-cat { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.9rem; background: #F9FAFB; border-left: 3px solid #111827; border-radius: 4px; margin: 1.25rem 0 0.75rem; font-weight: 600; font-size: 0.85rem; color: #111827 !important; }
-    .form-cat svg { color: #111827; flex-shrink: 0; }
-
-    /* BADGES */
-    .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.72rem; font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
+    .badge {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.2rem 0.55rem; border-radius: 4px;
+        font-size: 0.72rem; font-weight: 500; border: 1px solid transparent;
+    }
     .badge-slate { background: #F1F5F9; color: #475569; border-color: #E2E8F0; }
     .badge-blue { background: #EFF6FF; color: #1D4ED8; border-color: #DBEAFE; }
     .badge-green { background: #F0FDF4; color: #15803D; border-color: #DCFCE7; }
     .badge-red { background: #FEF2F2; color: #B91C1C; border-color: #FEE2E2; }
     .badge-amber { background: #FFFBEB; color: #B45309; border-color: #FEF3C7; }
-    .badge-dot { width: 6px; height: 6px; border-radius: 50%; }
-    .badge-slate .badge-dot { background: #64748B; } .badge-blue .badge-dot { background: #2563EB; } .badge-green .badge-dot { background: #16A34A; } .badge-red .badge-dot { background: #DC2626; } .badge-amber .badge-dot { background: #D97706; }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 
-    /* NOTICES */
-    .notice { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.8rem 1rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem; border: 1px solid; line-height: 1.5; }
+    .notice {
+        display: flex; align-items: flex-start; gap: 0.6rem;
+        padding: 0.8rem 1rem; border-radius: 6px; font-size: 0.85rem;
+        margin-bottom: 1rem; border: 1px solid; line-height: 1.5;
+    }
     .notice-info { background: #F0F9FF; border-color: #E0F2FE; color: #075985; }
     .notice-success { background: #F0FDF4; border-color: #DCFCE7; color: #14532D; }
     .notice-warning { background: #FFFBEB; border-color: #FEF3C7; color: #78350F; }
     .notice-error { background: #FEF2F2; border-color: #FEE2E2; color: #7F1D1D; }
-    .notice-icon { flex-shrink: 0; margin-top: 1px; }
 
-    /* EMPTY */
     .empty { text-align: center; padding: 2.5rem 1.5rem; color: #6B7280; }
-    .empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: #F3F4F6; color: #9CA3AF; margin: 0 auto 0.85rem; }
+    .empty-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 48px; height: 48px; border-radius: 50%;
+        background: #F3F4F6; color: #9CA3AF; margin: 0 auto 0.85rem;
+    }
     .empty-title { font-size: 0.9rem !important; font-weight: 600 !important; color: #374151 !important; }
     .empty-sub { font-size: 0.8rem !important; color: #9CA3AF !important; margin-top: 0.2rem; }
 
-    /* TABS */
-    .stTabs [data-baseweb="tab-list"] { gap: 0 !important; background: transparent !important; border-bottom: 1px solid #E5E7EB !important; padding: 0 !important; margin-bottom: 1rem; }
-    .stTabs [data-baseweb="tab"] { border-radius: 0 !important; padding: 0.55rem 1rem !important; font-weight: 500 !important; font-size: 0.85rem !important; color: #6B7280 !important; border-bottom: 2px solid transparent !important; background: transparent !important; }
-    .stTabs [aria-selected="true"] { color: #111827 !important; border-bottom-color: #111827 !important; font-weight: 600 !important; }
+    .stTabs [data-baseweb="tab-list"] { border-bottom: 1px solid #E5E7EB !important; gap: 0 !important; }
+    .stTabs [data-baseweb="tab"] { font-weight: 500 !important; color: #6B7280 !important; }
+    .stTabs [aria-selected="true"] { color: #111827 !important; font-weight: 600 !important; }
 
-    /* DATAFRAMES */
-    [data-testid="stDataFrame"] { border: 1px solid #E5E7EB !important; border-radius: 6px !important; overflow: hidden; }
-    [data-testid="stDataFrame"] > div, [data-testid="stDataFrame"] iframe { background-color: #FFFFFF !important; }
-    [data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] { background-color: #FFFFFF !important; }
-    [data-testid="stDataFrame"] * { color: #111827 !important; }
-    [data-testid="stDataFrame"] [role="columnheader"] { background-color: #F9FAFB !important; color: #374151 !important; font-weight: 600 !important; }
-    [data-testid="stDataFrame"] [role="cell"] { background-color: #FFFFFF !important; }
-
-    /* DATA EDITOR */
-    [data-testid="stDataEditor"] { border: 1px solid #E5E7EB !important; border-radius: 6px !important; overflow: hidden; }
-    [data-testid="stDataEditor"] * { color: #111827 !important; }
-    [data-testid="stDataEditor"] [role="columnheader"] { background-color: #F9FAFB !important; }
-
-    /* EXPANDERS */
-    [data-testid="stExpander"] { background: #FFF !important; border: 1px solid #E5E7EB !important; border-radius: 6px !important; margin-bottom: 0.6rem; }
-    [data-testid="stExpander"] summary { background: #FFF !important; color: #111827 !important; font-weight: 500 !important; font-size: 0.87rem !important; }
-    [data-testid="stExpander"] summary:hover { background: #F9FAFB !important; }
-
-    /* CODE */
-    code { background: #F3F4F6 !important; color: #111827 !important; padding: 0.1rem 0.35rem !important; border-radius: 3px !important; font-size: 0.8rem !important; }
-
-    /* ACTION BAR */
-    .action-bar { border-radius: 8px; padding: 0.85rem 1.15rem; margin: 1rem 0; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    .action-bar-text { font-size: 0.85rem; font-weight: 500; }
-    .action-bar-text strong { font-weight: 700; }
-
-    /* LOT DETAIL CARD */
-    .lot-detail-card { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-    .lot-detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.82rem; }
-    .lot-detail-item { display: flex; flex-direction: column; gap: 0.15rem; }
-    .lot-detail-label { font-size: 0.7rem; color: #6B7280; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; }
-    .lot-detail-value { color: #111827; font-weight: 500; }
-
-    /* PROVINCE CARDS */
-    .prov-card { background: #FFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
-    .prov-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
-    .prov-card-name { font-size: 0.95rem; font-weight: 600; color: #111827; }
-    .prov-card-count { padding: 0.2rem 0.55rem; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
-    .prov-card-count.warn { background: #FEF3C7; color: #92400E; }
-    .prov-card-count.ok { background: #D1FAE5; color: #065F46; }
-    .prov-card-count.busy { background: #EFF6FF; color: #1D4ED8; }
-    .prov-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; padding-top: 0.6rem; border-top: 1px solid #F3F4F6; }
-    .prov-stat { text-align: center; }
-    .prov-stat-val { font-size: 1.1rem; font-weight: 700; color: #111827; }
-    .prov-stat-lbl { font-size: 0.68rem; color: #6B7280; text-transform: uppercase; }
-
-    div[data-testid="column"] { padding: 0 0.35rem; }
-
-    /* ═══════ Retirer les boutons +/- des number inputs ═══════ */
-    button[data-testid="stNumberInputStepDown"], button[data-testid="stNumberInputStepUp"] { display: none !important; }
-    input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
-    input[type="number"] { -moz-appearance: textfield !important; }
-    .stNumberInput > div > div > input, .stTextInput > div > div > input {
-        background-color: #FFF !important; color: #111827 !important; border: 1px solid #D1D5DB !important;
-        border-radius: 6px !important; padding: 0.5rem 0.75rem !important; font-size: 0.875rem !important; width: 100% !important;
+    [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+        border: 1px solid #E5E7EB !important; border-radius: 6px !important;
     }
-    .stNumberInput > div > div > input:focus, .stTextInput > div > div > input:focus {
-        border-color: #111827 !important; box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
+    [data-testid="stExpander"] { border: 1px solid #E5E7EB !important; border-radius: 6px !important; }
+
+    .form-cat {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.6rem 0.9rem; background: #F9FAFB;
+        border-left: 3px solid #111827; border-radius: 4px;
+        margin: 1.25rem 0 0.75rem; font-weight: 600; font-size: 0.85rem; color: #111827 !important;
     }
 
-
-    /* Stabilisation des tableaux — empêche le décalage vers la droite */
-    [data-testid="stDataFrame"],
-    [data-testid="stDataEditor"] {
-        width: 100% !important;
-        max-width: 100% !important;
-        overflow-x: auto !important;
+    /* Bouton fermer sidebar : petit, sans casser la nav */
+    section[data-testid="stSidebar"] .srm-close-row button {
+        min-width: 2rem !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        padding: 0 !important;
+        border-radius: 8px !important;
+        border: 1px solid #E5E7EB !important;
+        background: #FFFFFF !important;
+        color: #4B5563 !important;
+        box-shadow: none !important;
+    }
+    section[data-testid="stSidebar"] .srm-close-row button:hover {
+        background: #F3F4F6 !important;
+        color: #111827 !important;
     }
 
-    [data-testid="stDataFrame"] > div,
-    [data-testid="stDataEditor"] > div {
-        width: 100% !important;
+    /* Bouton ouvrir » quand sidebar fermée */
+    .srm-open-wrap button {
+        min-width: 2rem !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        padding: 0 !important;
+        border-radius: 8px !important;
+        border: 1px solid #E5E7EB !important;
+        background: #FFFFFF !important;
+        color: #4B5563 !important;
     }
-
-    /* Empêcher les colonnes Streamlit de déborder */
-    div[data-testid="column"] {
-        min-width: 0 !important;
-        overflow: hidden !important;
-    }
-
-    /* Stabiliser le layout général */
-    section.main > div {
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-
-
 
     </style>
     """
+    return css
+
 
 
 def get_login_css() -> str:
@@ -358,61 +435,143 @@ def get_login_css() -> str:
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"], .stApp {
+    html, body, .stApp {
         font-family: 'Inter', sans-serif !important;
-        background-color: #F9FAFB !important;
-    }
-
-    #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
-    button[kind="header"], [data-testid="collapsedControl"] { display: none !important; }
-    [data-testid="stSidebarCollapseButton"], [data-testid="stExpandSidebarButton"] { display: none !important; }
-    section[data-testid="stSidebar"] { display: none !important; }
-    section[data-testid="stSidebarNav"] { display: none !important; }
-
-    .block-container { padding: 2.5rem 1rem 2rem !important; max-width: 100% !important; background: transparent !important; }
-
-    html, body, [class*="css"], .stApp {
+        background: #F9FAFB !important;
         font-size: 14px !important;
     }
 
-    /* Réduire la taille des éléments du login */
-    .login-card { max-width: 380px; padding: 2rem 1.75rem; }
-    .login-logo-img { max-width: 80px !important; }
-    .login-title { font-size: 1.2rem !important; }
-    .login-sub { font-size: 0.8rem !important; }
-    .login-footer { font-size: 0.68rem; }
+    #MainMenu, footer, [data-testid="stToolbar"],
+    header[data-testid="stHeader"] { display: none !important; }
+    section[data-testid="stSidebar"] { display: none !important; }
 
-    .login-card { max-width: 420px; margin: 3rem auto 0; background: #FFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 2.25rem 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-    .login-header { text-align: center; padding-bottom: 1.5rem; border-bottom: 1px solid #F3F4F6; margin-bottom: 1.5rem; }
-    .login-logo-img { max-width: 90px !important; height: auto !important; margin: 0 auto 1rem !important; display: block !important; }
-    .login-title { font-size: 1.35rem !important; font-weight: 700 !important; color: #111827 !important; margin: 0; }
-    .login-sub { font-size: 0.85rem !important; color: #6B7280 !important; margin-top: 0.3rem; }
-
-    .stTextInput > div > div > input { background-color: #FFF !important; color: #111827 !important; border: 1px solid #D1D5DB !important; border-radius: 6px !important; }
-    .stTextInput > div > div > input:focus { border-color: #111827 !important; box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important; }
-    input::placeholder { color: #9CA3AF !important; opacity: 1 !important; }
-    label, label[data-testid="stWidgetLabel"] { color: #374151 !important; font-size: 0.85rem !important; font-weight: 500 !important; }
-
-    button[data-testid="baseButton-primaryFormSubmit"], button[data-testid="baseButton-secondaryFormSubmit"], .stForm .stButton > button {
-        background: #111827 !important; color: #FFF !important; border: 1px solid #111827 !important; border-radius: 6px !important; width: 100% !important; box-shadow: none !important;
+    /* Centrage vertical de la page */
+    .block-container {
+        padding: 0 1rem !important;
+        max-width: 100% !important;
+        min-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
     }
-    .stForm .stButton > button:hover { background: #1F2937 !important; }
 
-    .login-footer { text-align: center; font-size: 0.72rem; color: #9CA3AF; margin-top: 1rem; padding-bottom: 2rem; max-width: 420px; margin-left: auto; margin-right: auto; }
-    [data-testid="stExpander"] { background: #FFF !important; border: 1px solid #E5E7EB !important; border-radius: 8px !important; margin-top: 0.75rem; max-width: 420px; margin-left: auto; margin-right: auto; }
+    /* Carte unique (formulaire) */
+    [data-testid="stForm"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 14px !important;
+        padding: 2rem 2.25rem 1.75rem 2.25rem !important;
+        box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06) !important;
+        max-width: 440px !important;
+        margin: 0 auto !important;
+    }
+
+    /* En-tête logo + titre */
+    .login-header {
+        text-align: center;
+        padding: 0.25rem 0 1.35rem 0;
+        margin: 0 0 1.35rem 0;
+        /* Ligne de séparation nette */
+        border-bottom: 1px solid #E5E7EB;
+    }
+
+    .login-logo-img {
+        max-width: 88px !important;
+        margin: 0 auto 0.85rem auto !important;
+        display: block !important;
+        background: transparent !important;
+    }
+
+    .login-title {
+        font-size: 1.35rem !important;
+        font-weight: 700 !important;
+        color: #111827 !important;
+        margin: 0 !important;
+        line-height: 1.3 !important;
+    }
+
+    .login-sub {
+        font-size: 0.85rem !important;
+        color: #6B7280 !important;
+        margin-top: 0.35rem !important;
+    }
+
+    /* Champs */
+    [data-testid="stForm"] .stTextInput > label {
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+        color: #374151 !important;
+    }
+
+    [data-testid="stForm"] .stTextInput > div > div > input {
+        border-radius: 8px !important;
+        border: 1px solid #D1D5DB !important;
+        padding: 0.65rem 0.85rem !important;
+    }
+
+    [data-testid="stForm"] .stTextInput > div > div > input:focus {
+        border-color: #111827 !important;
+        box-shadow: 0 0 0 3px rgba(17,24,39,0.08) !important;
+    }
+
+    /* Bouton */
+    button[data-testid="baseButton-primaryFormSubmit"],
+    [data-testid="stForm"] button[kind="primaryFormSubmit"],
+    [data-testid="stForm"] button[type="submit"] {
+        background: #111827 !important;
+        color: #FFF !important;
+        border-radius: 8px !important;
+        width: 100% !important;
+        height: 2.6rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.35rem !important;
+        border: 1px solid #111827 !important;
+    }
+
+    button[data-testid="baseButton-primaryFormSubmit"]:hover,
+    [data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+        background: #1F2937 !important;
+    }
+
+    .login-footer {
+        text-align: center;
+        font-size: 0.75rem;
+        color: #9CA3AF;
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+    }
+
+
+
+
+
+
+    /* Style du bouton "Mot de passe oublié" ou "Retour" (qui sont hors du form) */
+    div[data-testid="stMain"] button[kind="secondary"] {
+        background: transparent !important;
+        color: #4B5563 !important;
+        border: none !important;
+        box-shadow: none !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 0 !important;
+        margin-top: 0.5rem !important;
+    }
+
+    div[data-testid="stMain"] button[kind="secondary"]:hover {
+        color: #111827 !important;
+        background: transparent !important;
+        text-decoration: underline !important;
+    }
     </style>
     """
 
 
-# ══════════════════════════════════════════════════════════════
-# COMPONENT HELPERS (inchangés)
-# ══════════════════════════════════════════════════════════════
 def render_page_header(title, subtitle=""):
     sub = f'<div class="ph-sub">{subtitle}</div>' if subtitle else ''
     return f'<div class="page-header"><div class="ph-title">{title}</div>{sub}</div>'
 
-def render_breadcrumb(section, current_page, app_name="SRM Souss-Massa"):
-    return f'<div class="breadcrumb"><span class="breadcrumb-item">{app_name}</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-item">{section}</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-current">{current_page}</span></div>'
 
 def render_metric(label, value, icon_name="", sub="", trend=None):
     icon_html = f'<span class="m-card-icon">{Icon.render(icon_name, size=18)}</span>' if icon_name else ''
@@ -421,65 +580,174 @@ def render_metric(label, value, icon_name="", sub="", trend=None):
     if trend:
         val, direction = trend
         arrow = "▲" if direction == "up" else "▼" if direction == "down" else "●"
-        trend_html = f'<div class="m-card-trend trend-{direction}">{arrow} {val}</div>'
-    return f'<div class="m-card"><div class="m-card-header"><div class="m-card-label">{label}</div>{icon_html}</div><div class="m-card-value">{value}</div>{sub_html}{trend_html}</div>'
+        color = "#059669" if direction == "up" else "#DC2626" if direction == "down" else "#6B7280"
+        trend_html = f'<div style="color:{color};font-size:0.75rem;margin-top:0.3rem;font-weight:600;">{arrow} {val}</div>'
+    return (
+        f'<div class="m-card"><div class="m-card-header"><div class="m-card-label">{label}</div>'
+        f'{icon_html}</div><div class="m-card-value">{value}</div>{sub_html}{trend_html}</div>'
+    )
+
 
 def render_section_open(title, icon_name="", subtitle=""):
     icon_html = Icon.render(icon_name, 16, "#6B7280") if icon_name else ''
     sub_html = f'<div class="section-sub">{subtitle}</div>' if subtitle else ''
     return f'<div class="section"><div class="section-title">{icon_html}<span>{title}</span></div>{sub_html}'
 
+
 def render_section_close():
     return "</div>"
 
+
 def render_notice(message, variant="info"):
-    icons = {"info": Icon.render("INFO", 16), "success": Icon.render("CHECK_CIRCLE", 16), "warning": Icon.render("ALERT", 16), "error": Icon.render("X", 16)}
-    return f'<div class="notice notice-{variant}"><span class="notice-icon">{icons.get(variant, icons["info"])}</span><span>{message}</span></div>'
+    icons = {
+        "info": Icon.render("INFO", 16),
+        "success": Icon.render("CHECK_CIRCLE", 16),
+        "warning": Icon.render("ALERT", 16),
+        "error": Icon.render("X", 16),
+    }
+    return (
+        f'<div class="notice notice-{variant}">'
+        f'<span>{icons.get(variant, icons["info"])}</span><span>{message}</span></div>'
+    )
+
 
 def render_empty(icon_name, title, subtitle=""):
     sub = f'<div class="empty-sub">{subtitle}</div>' if subtitle else ''
-    return f'<div class="empty"><div class="empty-icon">{Icon.render(icon_name, 22)}</div><div class="empty-title">{title}</div>{sub}</div>'
+    return (
+        f'<div class="empty"><div class="empty-icon">{Icon.render(icon_name, 22)}</div>'
+        f'<div class="empty-title">{title}</div>{sub}</div>'
+    )
+
 
 def render_form_category(icon_name, title):
-    return f'<div class="form-cat">{Icon.render(icon_name, 14, "#111827")}<span>{title}</span></div>'
+    return (
+        f'<div class="form-cat">{Icon.render(icon_name, 14, "#111827")}'
+        f'<span>{title}</span></div>'
+    )
+
 
 def get_status_badge(status):
-    config = {"brouillon": ("Brouillon", "slate"), "soumis": ("Soumis", "blue"), "valide_dp": ("Validé DP", "amber"), "rejete_dp": ("Rejeté DP", "red"), "valide_regional": ("Validé Régional", "green"), "rejete_regional": ("Rejeté Régional", "red")}
+    config = {
+        "brouillon": ("Brouillon", "slate"),
+        "soumis": ("Soumis", "blue"),
+        "valide_dp": ("Validé DP", "amber"),
+        "rejete_dp": ("Rejeté DP", "red"),
+        "valide_regional": ("Validé Régional", "green"),
+        "rejete_regional": ("Rejeté Régional", "red"),
+        "en_cours_validation_dp": ("En cours val. DP", "blue"),
+        "en_cours_validation_regional": ("En cours val. Rég.", "amber"),
+        "partiellement_rejete_dp": ("Partiel. rejeté DP", "red"),
+        "partiellement_rejete_regional": ("Partiel. rejeté Rég.", "red"),
+        "modif_admin_dp": ("En modif. Admin DP", "amber"),
+        "modif_agent_dp": ("En modif. Agent", "amber"),
+        "en_modification_admin_dp": ("En modif. Admin DP", "amber"),
+        "en_modification_agent": ("En modif. Agent", "amber"),
+    }
     label, color = config.get(status, (status, "slate"))
-    return f'<span class="badge badge-{color}"><span class="badge-dot"></span>{label}</span>'
+    dots = {"slate": "#64748B", "blue": "#2563EB", "green": "#16A34A", "red": "#DC2626", "amber": "#D97706"}
+    return (
+        f'<span class="badge badge-{color}">'
+        f'<span class="badge-dot" style="background:{dots.get(color, "#000")}"></span>{label}</span>'
+    )
 
 def get_role_label(role):
-    return {"agent_dp": "Agent DP", "admin_dp": "Administrateur DP", "admin_regional": "Administrateur Régional", "super_admin": "Super Administrateur"}.get(role, role)
+    return {
+        "agent_dp": "Agent DP",
+        "admin_dp": "Administrateur DP",
+        "admin_regional": "Administrateur Régional",
+        "super_admin": "Super Administrateur",
+    }.get(role, role)
+
 
 def get_initials(name):
-    parts = name.strip().split()
+    parts = (name or "").strip().split()
     if len(parts) >= 2:
         return (parts[0][0] + parts[1][0]).upper()
     return parts[0][:2].upper() if parts else "??"
 
-def render_lot_detail_card(lot, extra_info=None):
-    items = [("Lot", f'<code>{lot["lot_id"]}</code>'), ("Agent", lot.get("agent", "—")), ("Centre", lot.get("centre", "—")), ("Période", f"{lot.get('mois', '')} {lot.get('annee', '')}"), ("Enregistrements", f'<strong>{lot.get("nb", 0)}</strong>'), ("Soumis le", lot.get("date_soum", "—"))]
-    if extra_info:
-        for k, v in extra_info.items():
-            items.append((k, v))
-    items_html = "".join([f'<div class="lot-detail-item"><span class="lot-detail-label">{k}</span><span class="lot-detail-value">{v}</span></div>' for k, v in items])
-    return f'<div class="lot-detail-card"><div class="lot-detail-grid">{items_html}</div></div>'
 
-def render_action_bar(nb_selected):
-    if nb_selected == 0:
-        return '<div class="action-bar" style="background:#F3F4F6;border:1px solid #E5E7EB;"><div class="action-bar-text" style="color:#6B7280;">Aucun lot sélectionné. Cochez les lots à traiter.</div></div>'
-    return f'<div class="action-bar" style="background:#FEF3C7;border:1px solid #FDE68A;"><div class="action-bar-text" style="color:#78350F;"><strong>{nb_selected}</strong> lot(s) sélectionné(s)</div></div>'
+def render_lot_detail_card(lot: dict, extra_info: dict = None):
+    items = list(lot.items())
+    if extra_info:
+        items.extend(list(extra_info.items()))
+    items_html = "".join(
+        f'<div style="display:flex;flex-direction:column;gap:0.15rem;">'
+        f'<span style="font-size:0.7rem;color:#6B7280;text-transform:uppercase;font-weight:600;">{k}</span>'
+        f'<span style="color:#111827;font-weight:500;">{v}</span></div>'
+        for k, v in items
+    )
+    return (
+        f'<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;'
+        f'padding:1rem 1.25rem;margin-bottom:1rem;">'
+        f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;font-size:0.82rem;">'
+        f'{items_html}</div></div>'
+    )
+
 
 def render_prov_card(nom, total, pending, valides, rejetes):
-    cc = "ok" if pending == 0 else "warn" if pending <= 3 else "busy"
-    return f'<div class="prov-card"><div class="prov-card-header"><div class="prov-card-name">{nom}</div><div class="prov-card-count {cc}">{pending} en attente</div></div><div class="prov-card-stats"><div class="prov-stat"><div class="prov-stat-val">{total}</div><div class="prov-stat-lbl">Total</div></div><div class="prov-stat"><div class="prov-stat-val" style="color:#059669;">{valides}</div><div class="prov-stat-lbl">Validés</div></div><div class="prov-stat"><div class="prov-stat-val" style="color:#DC2626;">{rejetes}</div><div class="prov-stat-lbl">Rejetés</div></div></div></div>'
+    cc = (
+        "background:#D1FAE5;color:#065F46;" if pending == 0
+        else "background:#FEF3C7;color:#92400E;" if pending <= 3
+        else "background:#EFF6FF;color:#1D4ED8;"
+    )
+    return (
+        f'<div style="background:#FFF;border:1px solid #E5E7EB;border-radius:8px;padding:1rem;margin-bottom:0.75rem;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">'
+        f'<div style="font-size:0.95rem;font-weight:600;">{nom}</div>'
+        f'<div style="padding:0.2rem 0.55rem;border-radius:12px;font-size:0.72rem;font-weight:600;{cc}">{pending} en attente</div></div>'
+        f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;padding-top:0.6rem;border-top:1px solid #F3F4F6;">'
+        f'<div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;">{total}</div>'
+        f'<div style="font-size:0.68rem;color:#6B7280;">TOTAL</div></div>'
+        f'<div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#059669;">{valides}</div>'
+        f'<div style="font-size:0.68rem;color:#6B7280;">VALIDÉS</div></div>'
+        f'<div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#DC2626;">{rejetes}</div>'
+        f'<div style="font-size:0.68rem;color:#6B7280;">REJETÉS</div></div></div></div>'
+    )
+
 
 def get_chart_config():
     return {"displayModeBar": False, "displaylogo": False}
 
+
 def apply_chart_theme(fig):
-    fig.update_layout(font_family="Inter, sans-serif", font_color="#374151", paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF", margin=dict(l=20, r=20, t=30, b=20), showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5, font=dict(size=11)), xaxis=dict(gridcolor="#F3F4F6", linecolor="#E5E7EB", tickfont=dict(size=11, color="#6B7280")), yaxis=dict(gridcolor="#F3F4F6", linecolor="#E5E7EB", tickfont=dict(size=11, color="#6B7280")))
+    fig.update_layout(
+        font_family="Inter, sans-serif",
+        font_color="#374151",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        margin=dict(l=20, r=20, t=30, b=20),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5, font=dict(size=11)),
+        xaxis=dict(gridcolor="#F3F4F6", linecolor="#E5E7EB", tickfont=dict(size=11, color="#6B7280")),
+        yaxis=dict(gridcolor="#F3F4F6", linecolor="#E5E7EB", tickfont=dict(size=11, color="#6B7280")),
+    )
     return fig
 
-CHART_COLORS = {"brouillon": "#94A3B8", "soumis": "#3B82F6", "valide_dp": "#F59E0B", "rejete_dp": "#EF4444", "valide_regional": "#10B981", "rejete_regional": "#DC2626"}
-STATUS_LABELS = {"brouillon": "Brouillon", "soumis": "Soumis", "valide_dp": "Validé DP", "rejete_dp": "Rejeté DP", "valide_regional": "Validé Régional", "rejete_regional": "Rejeté Régional"}
+
+CHART_COLORS = {
+    "brouillon": "#94A3B8",
+    "soumis": "#3B82F6",
+    "valide_dp": "#F59E0B",
+    "rejete_dp": "#EF4444",
+    "valide_regional": "#10B981",
+    "rejete_regional": "#DC2626",
+}
+
+STATUS_LABELS = {
+    "brouillon": "Brouillon",
+    "soumis": "Soumis",
+    "valide_dp": "Validé DP",
+    "rejete_dp": "Rejeté DP",
+    "valide_regional": "Validé Régional",
+    "rejete_regional": "Rejeté Régional",
+    "en_cours_validation_dp": "En cours validation DP",
+    "en_cours_validation_regional": "En cours validation Régional",
+    "partiellement_rejete_dp": "Partiellement rejeté DP",
+    "partiellement_rejete_regional": "Partiellement rejeté Régional",
+    "modif_admin_dp": "En modification (Admin DP)",
+    "modif_agent_dp": "En modification (Agent)",
+    "en_modification_admin_dp": "En modification (Admin DP)",
+    "en_modification_agent": "En modification (Agent)",
+    "vide": "Vide",
+    "en_cours_traitement": "En cours de traitement",
+}

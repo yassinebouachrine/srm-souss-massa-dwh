@@ -1,209 +1,284 @@
 # auth/session_manager.py
+"""
+Gestionnaire de session haute sécurité & haute disponibilité :
+- Restauration F5 instantanée (Native HTTP Cookies + localStorage Fallback)
+- Compatible 100% Mode Incognito / InPrivate
+- URL propre (aucun SID dans la barre d'adresse)
+- Indépendant des bibliothèques tiers obsolètes
+"""
+from __future__ import annotations
+
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
-from auth.authentication import AuthManager
-from config.settings import SESSION_TIMEOUT_MINUTES, ROLE_PERMISSIONS
-import hashlib
+import logging
 
+from auth.authentication import AuthManager, _get_client_info
+from config.settings import SESSION_TIMEOUT_MINUTES, ROLE_PERMISSIONS, TOKEN_EXPIRY_HOURS, IS_PRODUCTION
 
-# Clé secrète pour le hash (ne pas exposer)
-_SESSION_SALT = "srm-souss-massa-2026-session"
-
-
-def _make_session_id(token: str) -> str:
-    """Crée un identifiant de session court et opaque à partir du token."""
-    return hashlib.sha256(f"{_SESSION_SALT}{token}".encode()).hexdigest()[:16]
+logger = logging.getLogger(__name__)
+COOKIE_NAME = "srm_sm_sid"
 
 
 class SessionManager:
-    """Gestion de la session Streamlit avec persistance après F5."""
-
     SESSION_KEYS_TO_CLEAR = [
-        "authenticated", "user", "token",
-        "last_activity", "current_page",
+        "authenticated", "user", "token", "sid_public",
+        "last_activity", "current_page", "restore_attempted"
     ]
 
     @staticmethod
-    def init_session():
-        """Initialise les variables de session et tente la restauration."""
+    def init_session() -> None:
+        """Initialise la mémoire de session."""
         defaults = {
             "authenticated": False,
             "user": None,
             "token": None,
+            "sid_public": None,
             "current_page": "dashboard",
             "last_activity": None,
+            "restore_attempted": False,
         }
-        for key, value in defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = value
-
-        # Tenter la restauration automatique
-        if not st.session_state.get("authenticated"):
-            SessionManager._try_restore()
+        for k, v in defaults.items():
+            if k not in st.session_state:
+                st.session_state[k] = v
 
     @staticmethod
-    def _try_restore():
-        """
-        Restaure la session si un session_id valide existe dans les query params.
-        Le session_id est un hash court (16 chars) du vrai token — pas le token lui-même.
-        """
-        sid = st.query_params.get("sid")
-        if not sid or len(sid) != 16:
-            return
-
-        # Chercher en base un token actif dont le hash correspond
+    def _get_sid_from_browser() -> str | None:
+        """Lit le cookie directement depuis la requête HTTP reçue par le serveur."""
+        # 1. Tente via l'API native Streamlit (1.30+)
         try:
-            from db.connection import execute_query
-            result = execute_query(
-                """
-                SELECT s.token_session, s.id_utilisateur, s.date_expiration,
-                       u.username, u.nom_complet, u.role, u.id_province,
-                       u.code_province, u.est_actif
-                FROM app_auth.sessions s
-                JOIN app_auth.utilisateurs u ON s.id_utilisateur = u.id_utilisateur
-                WHERE s.est_active = TRUE
-                  AND s.date_expiration > CURRENT_TIMESTAMP
-                  AND u.est_actif = TRUE
-                ORDER BY s.date_creation DESC
-                LIMIT 50
-                """,
-                fetch="all",
-            )
-
-            if not result:
-                return
-
-            # Vérifier quel token correspond au session_id
-            for row in result:
-                token = row["token_session"]
-                if _make_session_id(token) == sid:
-                    # ✅ Match trouvé — restaurer la session
-                    st.session_state["authenticated"] = True
-                    st.session_state["user"] = {
-                        "id": row["id_utilisateur"],
-                        "username": row["username"],
-                        "nom_complet": row["nom_complet"],
-                        "role": row["role"],
-                        "id_province": row["id_province"],
-                        "code_province": row["code_province"],
-                        "token": token,
-                    }
-                    st.session_state["token"] = token
-                    st.session_state["last_activity"] = datetime.now()
-
-                    # Restaurer la page
-                    page = st.query_params.get("page", "dashboard")
-                    st.session_state["current_page"] = page
-                    return
+            cookies = getattr(st.context, "cookies", {})
+            if COOKIE_NAME in cookies:
+                return cookies[COOKIE_NAME]
         except Exception:
             pass
 
+        # 2. Tente via les en-têtes HTTP bruts
+        try:
+            headers = getattr(st.context, "headers", {})
+            cookie_str = headers.get("cookie") or headers.get("Cookie") or ""
+            for item in cookie_str.split(";"):
+                if "=" in item:
+                    k, v = item.strip().split("=", 1)
+                    if k.strip() == COOKIE_NAME:
+                        return v.strip()
+        except Exception:
+            pass
+
+        return None
+
     @staticmethod
-    def _update_url_sid():
-        """Met à jour le session_id dans l'URL (hash court, pas le vrai token)."""
-        token = st.session_state.get("token")
-        if token:
-            st.query_params["sid"] = _make_session_id(token)
-        else:
-            if "sid" in st.query_params:
-                # Garder seulement page
-                page = st.query_params.get("page")
+    def restore_session() -> bool:
+        """
+        Restaure la session depuis le cookie ou le token de secours.
+        """
+        if st.session_state.get("authenticated") and st.session_state.get("user"):
+            return True
+
+        # 1. Vérifier si un SID est présent dans le Cookie HTTP ou en paramètre de secours
+        restore_sid = st.query_params.get("restore_sid")
+        sid = restore_sid or SessionManager._get_sid_from_browser()
+
+        if not sid or not isinstance(sid, str) or len(sid) != 16:
+            return False
+
+        try:
+            from db.connection import execute_query
+
+            row = execute_query(
+                """
+                SELECT
+                    s.id_utilisateur, s.ip_address, s.user_agent,
+                    u.username, u.nom_complet, u.email, u.est_actif,
+                    u.id_role, r.code_role, r.libelle_role,
+                    u.id_province, p.code_province, p.nom_province
+                FROM app_auth.sessions s
+                JOIN app_auth.utilisateurs u ON u.id_utilisateur = s.id_utilisateur
+                JOIN app_auth.ref_role r ON r.id_role = u.id_role
+                LEFT JOIN app_staging.ref_province p ON p.id_province = u.id_province
+                WHERE s.sid_public = %s
+                  AND s.est_active = TRUE
+                  AND s.date_expiration > CURRENT_TIMESTAMP
+                  AND u.est_actif = TRUE
+                """,
+                (sid,),
+                fetch="one",
+            )
+
+            if not row:
+                return False
+
+            # Session valide trouvée en BDD !
+            st.session_state["authenticated"] = True
+            st.session_state["token"] = "active_session"
+            st.session_state["sid_public"] = sid
+            st.session_state["user"] = {
+                "id": row["id_utilisateur"],
+                "username": row["username"],
+                "nom_complet": row["nom_complet"],
+                "email": row["email"],
+                "id_role": row["id_role"],
+                "role": row["code_role"],
+                "role_libelle": row["libelle_role"],
+                "id_province": row["id_province"],
+                "code_province": row["code_province"],
+                "nom_province": row["nom_province"],
+                "sid_public": sid,
+            }
+            st.session_state["last_activity"] = datetime.now()
+
+            # Nettoyer l'URL si on a utilisé le secours de restauration
+            page = st.query_params.get("page", "dashboard")
+            if "restore_sid" in st.query_params:
                 st.query_params.clear()
-                if page:
-                    st.query_params["page"] = page
+                st.query_params["page"] = page
+
+            if page in ROLE_PERMISSIONS.get(row["code_role"], []):
+                st.session_state["current_page"] = page
+            else:
+                st.session_state["current_page"] = "dashboard"
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Erreur restauration session : {e}")
+
+        return False
+
+    @staticmethod
+    def _inject_browser_session(sid: str) -> None:
+        """Injecte le cookie et le localStorage au niveau du document principal."""
+        js = f"""
+        <script>
+            (function() {{
+                var cookieVal = "{COOKIE_NAME}={sid}; path=/; max-age=28800; SameSite=Lax";
+                document.cookie = cookieVal;
+                try {{ window.top.document.cookie = cookieVal; }} catch(e) {{}}
+                try {{ window.top.localStorage.setItem("{COOKIE_NAME}", "{sid}"); }} catch(e) {{}}
+            }})();
+        </script>
+        """
+        components.html(js, height=0, width=0)
+
+    @staticmethod
+    def inject_incognito_fallback_js() -> None:
+        """Secours Incognito : Si les cookies HTTP sont bloqués, lit le LocalStorage pour restaurer au F5."""
+        js = f"""
+        <script>
+            (function() {{
+                try {{
+                    var sid = null;
+                    try {{ sid = window.top.localStorage.getItem("{COOKIE_NAME}"); }} catch(e) {{}}
+                    if (!sid) {{
+                        var m = document.cookie.match(new RegExp('(^| )' + "{COOKIE_NAME}" + '=([^;]+)'));
+                        if (m) sid = m[2];
+                    }}
+                    if (sid && sid.length === 16) {{
+                        var url = new URL(window.location.href);
+                        if (!url.searchParams.has("restore_sid")) {{
+                            url.searchParams.set("restore_sid", sid);
+                            window.location.href = url.toString();
+                        }}
+                    }}
+                }} catch(e) {{}}
+            }})();
+        </script>
+        """
+        components.html(js, height=0, width=0)
+
+    @staticmethod
+    def _clear_browser_session() -> None:
+        """Nettoie le navigateur au Logout."""
+        js = f"""
+        <script>
+            (function() {{
+                var cookieVal = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax";
+                document.cookie = cookieVal;
+                try {{ window.top.document.cookie = cookieVal; }} catch(e) {{}}
+                try {{ window.top.localStorage.removeItem("{COOKIE_NAME}"); }} catch(e) {{}}
+            }})();
+        </script>
+        """
+        components.html(js, height=0, width=0)
 
     @staticmethod
     def login(username: str, password: str) -> dict:
-        """Traite une tentative de connexion."""
+        """Connexion utilisateur."""
         result = AuthManager.authenticate(username, password)
-        if result["success"]:
-            st.session_state["authenticated"] = True
-            st.session_state["user"] = result["user"]
-            st.session_state["token"] = result["user"]["token"]
-            st.session_state["last_activity"] = datetime.now()
-            st.session_state["current_page"] = "dashboard"
+        if not result["success"]:
+            return result
 
-            # Mettre le session_id hashé dans l'URL
-            SessionManager._update_url_sid()
+        user = result["user"]
+        sid = user["sid_public"]
 
-            if "logout_reason" in st.session_state:
-                del st.session_state["logout_reason"]
+        st.session_state["authenticated"] = True
+        st.session_state["user"] = user
+        st.session_state["token"] = user.get("token")
+        st.session_state["sid_public"] = sid
+        st.session_state["last_activity"] = datetime.now()
+        st.session_state["current_page"] = "dashboard"
 
+        # Écriture dans le navigateur du client
+        SessionManager._inject_browser_session(sid)
+
+        st.query_params.clear()
+        st.query_params["page"] = "dashboard"
+        st.session_state.pop("logout_reason", None)
         return result
 
     @staticmethod
-    def logout(reason: str = "manual"):
-        """Déconnecte l'utilisateur et nettoie complètement."""
-        if st.session_state.get("user") and st.session_state.get("token"):
+    def logout(reason: str = "manual") -> None:
+        """Déconnexion complète."""
+        sid = st.session_state.get("sid_public")
+        if sid:
             try:
-                AuthManager.logout(
-                    st.session_state["user"]["id"],
-                    st.session_state["token"],
-                )
+                from db.connection import execute_insert
+                execute_insert("UPDATE app_auth.sessions SET est_active = FALSE WHERE sid_public = %s", (sid,))
             except Exception:
                 pass
 
-        for key in SessionManager.SESSION_KEYS_TO_CLEAR:
-            if key in st.session_state:
-                del st.session_state[key]
+        SessionManager._clear_browser_session()
+
+        for k in SessionManager.SESSION_KEYS_TO_CLEAR:
+            st.session_state.pop(k, None)
 
         st.session_state["authenticated"] = False
         st.session_state["user"] = None
         st.session_state["token"] = None
+        st.session_state["sid_public"] = None
         st.session_state["last_activity"] = None
 
+        st.query_params.clear()
         SessionManager._clear_page_states()
 
-        if reason == "timeout":
-            st.session_state["logout_reason"] = "timeout"
-        elif reason == "expired":
-            st.session_state["logout_reason"] = "expired"
+        if reason in ("timeout", "security_breach", "expired"):
+            st.session_state["logout_reason"] = reason
 
     @staticmethod
-    def _clear_page_states():
-        """Nettoie les états liés aux pages."""
-        prefixes_to_clear = [
-            "sel_", "selr_", "confirm_", "confirm_del_",
-            "editor_", "editorR_", "draft_", "edit_",
-            "nb_custom_", "val_", "vm_", "vr_",
-            "nb_", "tmc_", "dmt_", "vb_",
-            "custom_nom_", "custom_val_",
-        ]
-
-        keys_to_delete = []
+    def _clear_page_states() -> None:
+        prefixes = (
+            "sel_", "selr_", "confirm_", "confirm_del_", "editor_", "editorR_",
+            "draft_", "edit_", "val_", "vm_", "vr_", "nb_", "tmc_", "dmt_", "vb_",
+            "chk_autres_", "cmt_autres_", "val_autres_", "page_num_", "vh_",
+            "chk_corr_", "chk_deleg_",
+        )
         for key in list(st.session_state.keys()):
-            for prefix in prefixes_to_clear:
-                if key.startswith(prefix):
-                    keys_to_delete.append(key)
-                    break
-
-        for key in keys_to_delete:
-            try:
-                del st.session_state[key]
-            except KeyError:
-                pass
+            if any(key.startswith(p) for p in prefixes):
+                st.session_state.pop(key, None)
 
     @staticmethod
     def check_session_timeout() -> bool:
         if not st.session_state.get("authenticated"):
             return False
-
-        last_activity = st.session_state.get("last_activity")
-        if last_activity is None:
-            st.session_state["last_activity"] = datetime.now()
-            return True
-
-        elapsed = datetime.now() - last_activity
-        timeout = timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-
-        if elapsed > timeout:
+        last = st.session_state.get("last_activity") or datetime.now()
+        st.session_state["last_activity"] = last
+        if datetime.now() - last > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
             SessionManager.logout(reason="timeout")
             return False
-
         return True
 
     @staticmethod
-    def update_activity():
+    def update_activity() -> None:
         if st.session_state.get("authenticated"):
             st.session_state["last_activity"] = datetime.now()
 
@@ -211,33 +286,24 @@ class SessionManager:
     def is_authenticated() -> bool:
         if not st.session_state.get("authenticated"):
             return False
-
         if not SessionManager.check_session_timeout():
             return False
-
-        token = st.session_state.get("token")
-        if token:
-            user = AuthManager.validate_session(token)
-            if user:
-                SessionManager.update_activity()
-                return True
-
-        SessionManager.logout(reason="expired")
-        return False
+        SessionManager.update_activity()
+        return True
 
     @staticmethod
-    def get_user() -> dict:
+    def get_user():
         return st.session_state.get("user")
 
     @staticmethod
-    def get_role() -> str:
-        user = st.session_state.get("user")
-        return user["role"] if user else None
+    def get_role():
+        u = st.session_state.get("user")
+        return u["role"] if u else None
 
     @staticmethod
-    def get_province_id() -> int:
-        user = st.session_state.get("user")
-        return user["id_province"] if user else None
+    def get_province_id():
+        u = st.session_state.get("user")
+        return u["id_province"] if u else None
 
     @staticmethod
     def has_role(roles: list) -> bool:
@@ -248,28 +314,25 @@ class SessionManager:
         role = SessionManager.get_role()
         if not role:
             return False
-        allowed_pages = ROLE_PERMISSIONS.get(role, [])
-        return page in allowed_pages
+        return page in ROLE_PERMISSIONS.get(role, [])
 
     @staticmethod
-    def require_auth():
+    def require_auth() -> None:
         if not SessionManager.is_authenticated():
             st.warning("Session expirée. Veuillez vous reconnecter.")
             st.stop()
 
     @staticmethod
-    def require_role(roles: list):
+    def require_role(roles: list) -> None:
         SessionManager.require_auth()
         if not SessionManager.has_role(roles):
-            st.error("Vous n'avez pas les droits nécessaires.")
+            st.error("Droits insuffisants.")
             st.stop()
 
     @staticmethod
     def get_remaining_session_time() -> int:
-        last_activity = st.session_state.get("last_activity")
-        if last_activity is None:
+        last = st.session_state.get("last_activity")
+        if last is None:
             return SESSION_TIMEOUT_MINUTES * 60
-
-        elapsed = (datetime.now() - last_activity).total_seconds()
-        remaining = (SESSION_TIMEOUT_MINUTES * 60) - elapsed
-        return max(0, int(remaining))
+        rem = SESSION_TIMEOUT_MINUTES * 60 - (datetime.now() - last).total_seconds()
+        return max(0, int(rem))

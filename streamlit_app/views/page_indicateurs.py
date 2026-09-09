@@ -1,90 +1,140 @@
 # views/page_indicateurs.py
+"""Saisie et gestion des indicateurs DP."""
+
 import streamlit as st
 import pandas as pd
+import time
 from datetime import datetime
+
 from auth.session_manager import SessionManager
 from auth.authentication import AuthManager
 from db.queries import (
-    get_types_indicateur, insert_staging_indicateurs,
-    get_staging_indicateurs, get_staging_reclamations,
-    submit_lot, get_staging_lots,
-    get_rejected_lots, reset_lot_for_correction, update_staging_record,
-    get_draft_lots, delete_lot,
-    update_staging_record_with_history, get_lot_corrections
+    get_types_indicateur, insert_indicateurs_batch, get_staging_lots,
+    get_lot_details_indicateurs, get_lot_details_reclamations, submit_lot,
+    delete_draft_lot, update_donnee_with_correction, get_lot_corrections_history,
+    get_centres, get_lots_transferes_pour_agent, marquer_transfert_traite,
+    resubmit_lot_after_rejection, 
+    get_demandes_pour_user, resoumettre_apres_modif_agent,
 )
-from config.provinces import get_province_name, get_centres_for_province
-from utils.helpers import generate_lot_id, get_current_period, MOIS_FR, get_mois_name, format_datetime
+from config.provinces import get_province_name
+from utils.helpers import get_current_period, MOIS_FR, get_mois_name, format_datetime
 from utils.styles import (
-    render_page_header, render_notice, render_empty,
-    render_section_open, render_section_close,
-    render_form_category, get_status_badge,
-    render_lot_detail_card, STATUS_LABELS
+    render_page_header, render_notice, render_empty, render_section_open, render_section_close,
+    render_form_category, render_lot_detail_card, STATUS_LABELS, get_status_badge
 )
+from utils.history_display import render_historique_complet_lot, render_data_table_with_history
+from utils.pagination import paginate_list
 
-
-# ═══════════════════════════════════════════════════════════════
-# Catégories statiques
-# ═══════════════════════════════════════════════════════════════
 STATIC_CATEGORIES = ["Infrastructure"]
+
+
+def _clear_indicateur_form_keys():
+    """Vide les champs du formulaire d'indicateurs."""
+    keys_to_delete = []
+    for k in list(st.session_state.keys()):
+        if k.startswith("val_"):
+            keys_to_delete.append(k)
+    for k in keys_to_delete:
+        try:
+            del st.session_state[k]
+        except KeyError:
+            pass
 
 
 def render_indicateurs():
     SessionManager.require_role(["agent_dp", "admin_dp", "super_admin"])
     user = SessionManager.get_user()
     id_province = user["id_province"]
-    code_province = user["code_province"]
-    province_name = get_province_name(id_province)
+    province_name = user["nom_province"] or get_province_name(id_province)
     role = user["role"]
+    is_admin = role in ("admin_dp", "super_admin")
 
-    st.markdown(
-        render_page_header("Indicateurs de performance DP", f"Province de {province_name}"),
-        unsafe_allow_html=True,
-    )
+    st.markdown(render_page_header("Indicateurs de performance DP", f"Province de {province_name}"), unsafe_allow_html=True)
 
-    drafts = get_draft_lots(id_province, "indicateurs") or []
-    rejected = get_rejected_lots(id_province, "indicateurs") or []
+    if is_admin:
+        st.markdown(render_notice(
+            "En tant qu'admin DP, vos saisies sont <strong>auto-validées</strong> et transmises directement au régional. "
+            "Consultez la page <strong>Validation DP</strong> pour gérer les rejets et demandes de modification.",
+            "info"
+        ), unsafe_allow_html=True)
+
+    drafts = get_staging_lots(
+        id_province=id_province, statut="brouillon",
+        type_donnees="indicateurs", user_id=user["id"]
+    ) or []
+
+    # ─── Lots rejetés & demandes uniquement pour l'AGENT DP ───
+    if role == "agent_dp":
+        rej_dp = get_staging_lots(
+            id_province=id_province, statut="partiellement_rejete_dp",
+            type_donnees="indicateurs"
+        ) or []
+        rej_dp = [l for l in rej_dp if l["cree_par"] == user["id"]]
+        rej_transferes = get_lots_transferes_pour_agent(id_province, user["id"], "indicateurs") or []
+        rejected = rej_dp + rej_transferes
+
+        demandes_modif = get_demandes_pour_user(user["id"], "indicateurs") or []
+    else:
+        rejected = []
+        demandes_modif = []
 
     if rejected:
-        who = "Vos" if role == "agent_dp" else "Les"
         st.markdown(render_notice(
-            f"{who} lot(s) rejeté(s) : <strong>{len(rejected)}</strong>. "
-            f"Consultez l'onglet « Lots rejetés » pour corriger et resoumettre.",
+            f"Vos lot(s) avec des données rejetées : <strong>{len(rejected)}</strong>. "
+            f"Consultez l'onglet « Lots rejetés » pour corriger.",
             "warning"
         ), unsafe_allow_html=True)
 
     if drafts:
         st.markdown(render_notice(
-            f"Vous avez <strong>{len(drafts)}</strong> brouillon(s) non soumis. "
-            f"N'oubliez pas de les compléter et les soumettre.",
+            f"Vous avez <strong>{len(drafts)}</strong> brouillon(s) non soumis.",
             "info"
         ), unsafe_allow_html=True)
 
-    tab_new, tab_drafts, tab_rejected, tab_hist = st.tabs([
-        "Nouvelle saisie",
-        f"Brouillons ({len(drafts)})",
-        f"Lots rejetés ({len(rejected)})",
-        "Historique"
-    ])
+    # ─── Onglets adaptés selon le rôle ───
+    if is_admin:
+        tab_new, tab_drafts, tab_hist = st.tabs([
+            "Nouvelle saisie",
+            f"Brouillons ({len(drafts)})",
+            "Historique"
+        ])
 
-    with tab_new:
-        _render_new_entry(user, id_province, code_province, province_name)
+        with tab_new:
+            _render_new_entry(user, id_province)
+        with tab_drafts:
+            render_draft_lots("indicateurs", user, drafts)
+        with tab_hist:
+            _render_history("indicateurs", id_province)
+    else:
+        tab_new, tab_drafts, tab_rejected, tab_modif, tab_hist = st.tabs([
+            "Nouvelle saisie",
+            f"Brouillons ({len(drafts)})",
+            f"Lots rejetés ({len(rejected)})",
+            f"Modifications demandées ({len(demandes_modif)})",
+            "Historique"
+        ])
 
-    with tab_drafts:
-        render_draft_lots("indicateurs", id_province, user, drafts)
+        with tab_new:
+            _render_new_entry(user, id_province)
+        with tab_drafts:
+            render_draft_lots("indicateurs", user, drafts)
+        with tab_rejected:
+            render_rejected_lots("indicateurs", user, rejected, role)
+        with tab_modif:
+            render_modifications_agent("indicateurs", user, demandes_modif)
+        with tab_hist:
+            _render_history("indicateurs", id_province)
 
-    with tab_rejected:
-        render_rejected_lots("indicateurs", id_province, user, rejected)
-
-    with tab_hist:
-        _render_history("indicateurs", id_province)
-
-
-def _render_new_entry(user, id_province, code_province, province_name):
-    """Formulaire de saisie avec séparation mensuel/statique."""
+            
+def _render_new_entry(user, id_province):
+    role = user["role"]
+    is_admin = role in ("admin_dp", "super_admin")
 
     st.markdown(render_notice(
-        "Sélectionnez la période et le centre, puis saisissez la valeur de chaque indicateur. "
-        "Vous pouvez enregistrer en brouillon pour continuer plus tard."
+        "Sélectionnez la période et le centre, puis saisissez les valeurs. "
+        + ("Vos saisies seront <strong>auto-validées</strong> lors de la soumission."
+           if is_admin else
+           "Enregistrez en brouillon ou soumettez directement pour validation par votre admin DP.")
     ), unsafe_allow_html=True)
 
     st.markdown(render_section_open("Période et centre", "CALENDAR"), unsafe_allow_html=True)
@@ -94,14 +144,12 @@ def _render_new_entry(user, id_province, code_province, province_name):
     with c1:
         annee = st.selectbox("Année", list(range(cy, cy - 3, -1)), key="i_a")
     with c2:
-        mois = st.selectbox("Mois", list(range(1, 13)), format_func=lambda x: MOIS_FR[x],
-                            index=max(0, cm - 2), key="i_m")
+        mois = st.selectbox("Mois", list(range(1, 13)), format_func=lambda x: MOIS_FR[x], index=max(0, cm - 2), key="i_m")
     with c3:
-        centres = get_centres_for_province(id_province)
-        cmap = {c["nom"]: c for c in centres}
+        centres = get_centres(id_province)
+        cmap = {c["nom_centre"]: c for c in centres}
         cn = st.selectbox("Centre", list(cmap.keys()), key="i_c")
         centre = cmap[cn]
-
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
     types = get_types_indicateur()
@@ -109,641 +157,514 @@ def _render_new_entry(user, id_province, code_province, province_name):
         st.warning("Aucun type d'indicateur configuré.")
         return
 
-    cats_mensuelles = {}
-    cats_statiques = {}
+    cats_m, cats_s = {}, {}
     for t in types:
         cat = t["categorie"] or "Autres"
         if cat in STATIC_CATEGORIES:
-            cats_statiques.setdefault(cat, []).append(t)
+            cats_s.setdefault(cat, []).append(t)
         else:
-            cats_mensuelles.setdefault(cat, []).append(t)
+            cats_m.setdefault(cat, []).append(t)
 
     st.markdown(render_section_open("Indicateurs mensuels", "EDIT"), unsafe_allow_html=True)
+    
+    with st.form("form_ind", clear_on_submit=True):
+        records = []
 
-    st.markdown(
-        "<div style='font-size:0.82rem;color:#6B7280;margin-bottom:0.75rem;'>"
-        "Indicateurs à saisir <strong>chaque mois</strong> selon l'activité du centre."
-        "</div>",
-        unsafe_allow_html=True
-    )
-
-    with st.form("form_ind", clear_on_submit=False):
-        vals = {}
-
-        for cat_name, indics in cats_mensuelles.items():
+        for cat_name, indics in cats_m.items():
             st.markdown(render_form_category("FOLDER", cat_name), unsafe_allow_html=True)
-
             hc1, hc2 = st.columns([6, 3])
             with hc1:
-                st.markdown(
-                    "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>INDICATEUR</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown("<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>INDICATEUR</div>", unsafe_allow_html=True)
             with hc2:
-                st.markdown(
-                    "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>VALEUR</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown("<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>VALEUR</div>", unsafe_allow_html=True)
 
             for ind in indics:
-                col_label, col_val = st.columns([6, 3])
-                with col_label:
-                    st.markdown(
-                        f"<div style='padding-top:0.5rem;'>"
-                        f"<strong>{ind['libelle_indicateur']}</strong> "
-                        f"<span style='color:#6B7280;font-size:0.78rem;'>({ind['unite']})</span>"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
-                with col_val:
-                    # ✅ FIX: Typage strict Entier vs Réel selon l'unité
-                    is_integer = ind['unite'] in ['U', 'An', '']
-                    
-                    if is_integer:
-                        val = st.number_input(
-                            f"Valeur {ind['code_indicateur']}",
-                            min_value=0, value=0, step=1,
-                            key=f"val_{ind['code_indicateur']}",
-                            label_visibility="collapsed",
-                        )
-                    else:
-                        val = st.number_input(
-                            f"Valeur {ind['code_indicateur']}",
-                            min_value=0.0, value=0.0, step=0.01, format="%.2f",
-                            key=f"val_{ind['code_indicateur']}",
-                            label_visibility="collapsed",
-                        )
+                cl, cv = st.columns([6, 3])
+                with cl:
+                    st.markdown(f"<div style='padding-top:0.5rem;'><strong>{ind['libelle_indicateur']}</strong> <span style='color:#6B7280;font-size:0.78rem;'>({ind['unite']})</span></div>", unsafe_allow_html=True)
+                with cv:
+                    is_int = ind["unite"] in ["U", "An", ""]
+                    val = st.number_input(f"V {ind['code_indicateur']}", min_value=0 if is_int else 0.0, value=0 if is_int else 0.0, step=1 if is_int else 0.01, format=None if is_int else "%.2f", key=f"val_{ind['code_indicateur']}", label_visibility="collapsed")
+                if val > 0:
+                    records.append({"id_type_indicateur": ind["id_type_indicateur"], "valeur": float(val)})
 
-                vals[ind["code_indicateur"]] = {
-                    "valeur": val,
-                    "lib": ind["libelle_indicateur"],
-                    "unite": ind["unite"],
-                    "cat": cat_name,
-                }
-
-        if cats_statiques:
+        if cats_s:
             st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
-            st.markdown(
-                "<div style='background:#FEF3C7;border-left:4px solid #F59E0B;"
-                "padding:0.85rem 1.15rem;border-radius:6px;margin:1rem 0;'>"
-                "<div style='font-weight:700;color:#78350F;font-size:0.9rem;margin-bottom:0.25rem;'>"
-                "Indicateurs statiques (Infrastructure)"
-                "</div>"
-                "<div style='font-size:0.8rem;color:#78350F;'>"
-                "Ces indicateurs ne changent <strong>pas chaque mois</strong>. "
-                "Saisissez-les uniquement lors d'un <strong>changement réel</strong>. "
-                "Laissez à 0 si aucun changement."
-                "</div></div>",
-                unsafe_allow_html=True
-            )
-
-            for cat_name, indics in cats_statiques.items():
+            st.markdown("<div style='background:#FEF3C7;border-left:4px solid #F59E0B;padding:0.85rem;border-radius:6px;margin:1rem 0;'><div style='font-weight:700;color:#78350F;'>Indicateurs statiques (Infrastructure)</div><div style='font-size:0.8rem;color:#78350F;'>Saisissez-les uniquement lors d'un changement réel. Laissez à 0 si aucun changement.</div></div>", unsafe_allow_html=True)
+            for cat_name, indics in cats_s.items():
                 st.markdown(render_form_category("FOLDER", cat_name), unsafe_allow_html=True)
-
-                hc1, hc2 = st.columns([6, 3])
-                with hc1:
-                    st.markdown(
-                        "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>INDICATEUR</div>",
-                        unsafe_allow_html=True
-                    )
-                with hc2:
-                    st.markdown(
-                        "<div style='font-weight:600;font-size:0.8rem;color:#6B7280;'>VALEUR</div>",
-                        unsafe_allow_html=True
-                    )
-
                 for ind in indics:
-                    col_label, col_val = st.columns([6, 3])
-                    with col_label:
-                        st.markdown(
-                            f"<div style='padding-top:0.5rem;'>"
-                            f"<strong>{ind['libelle_indicateur']}</strong> "
-                            f"<span style='color:#6B7280;font-size:0.78rem;'>({ind['unite']})</span>"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
-                    with col_val:
-                        # ✅ FIX: Typage strict Entier vs Réel
-                        is_integer = ind['unite'] in ['U', 'An', '']
-                        if is_integer:
-                            val = st.number_input(
-                                f"Valeur {ind['code_indicateur']}",
-                                min_value=0, value=0, step=1,
-                                key=f"val_{ind['code_indicateur']}",
-                                label_visibility="collapsed",
-                                help="Laissez à 0 si pas de changement ce mois-ci",
-                            )
-                        else:
-                            val = st.number_input(
-                                f"Valeur {ind['code_indicateur']}",
-                                min_value=0.0, value=0.0, step=0.01, format="%.2f",
-                                key=f"val_{ind['code_indicateur']}",
-                                label_visibility="collapsed",
-                                help="Laissez à 0 si pas de changement ce mois-ci",
-                            )
-
-                    vals[ind["code_indicateur"]] = {
-                        "valeur": val,
-                        "lib": ind["libelle_indicateur"],
-                        "unite": ind["unite"],
-                        "cat": cat_name,
-                    }
+                    cl, cv = st.columns([6, 3])
+                    with cl:
+                        st.markdown(f"<div style='padding-top:0.5rem;'><strong>{ind['libelle_indicateur']}</strong> ({ind['unite']})</div>", unsafe_allow_html=True)
+                    with cv:
+                        val = st.number_input(f"V {ind['code_indicateur']}", min_value=0.0, value=0.0, key=f"val_{ind['code_indicateur']}", label_visibility="collapsed")
+                    if val > 0:
+                        records.append({"id_type_indicateur": ind["id_type_indicateur"], "valeur": float(val)})
 
         st.markdown("---")
         b1, b2 = st.columns(2)
         with b1:
             draft = st.form_submit_button("Enregistrer brouillon", use_container_width=True)
         with b2:
-            submit = st.form_submit_button("Soumettre pour validation",
-                                            use_container_width=True, type="primary")
+            btn_lbl = "Soumettre et auto-valider" if is_admin else "Soumettre pour validation"
+            submit = st.form_submit_button(btn_lbl, use_container_width=True, type="primary")
 
         if draft or submit:
-            has = any(v["valeur"] > 0 for v in vals.values())
-            if not has:
+            if not records:
                 st.error("Saisissez au moins une valeur non nulle.")
             else:
-                lot_id = generate_lot_id(code_province, "INDIC")
-                status = "brouillon" if draft else "soumis"
-                records = []
+                is_sub = bool(submit)
+                id_lot = insert_indicateurs_batch(centre["id_centre"], annee, mois, records, user["id"], is_sub)
+                AuthManager.log_action(user["id"], "SOUMISSION_INDICATEURS" if is_sub else "BROUILLON_INDICATEURS", "lot_saisie", id_lot, {"nb": len(records)})
 
-                for code, v in vals.items():
-                    if v["valeur"] > 0:
-                        records.append((
-                            id_province, province_name, centre["id"], centre["nom"],
-                            annee, mois, MOIS_FR[mois], code, v["lib"], v["unite"], v["cat"],
-                            v["valeur"], status, user["id"],
-                            datetime.now() if submit else None, lot_id,
-                        ))
+                _clear_indicateur_form_keys()
 
-                try:
-                    insert_staging_indicateurs(records)
-                    AuthManager.log_action(
-                        user["id"],
-                        "SAISIE_INDICATEURS" if draft else "SOUMISSION_INDICATEURS",
-                        "staging_indicateurs_dp",
-                        details={"lot_id": lot_id, "nb": len(records)},
+                if is_sub and is_admin:
+                    st.success(
+                        f"Lot #{id_lot} saisi et transmis directement au régional "
+                        f"(auto-validation DP) — {len(records)} lignes."
                     )
-                    if draft:
-                        st.success(f"Brouillon enregistré — {len(records)} indicateurs.")
-                    else:
-                        st.success(f"Soumis pour validation — {len(records)} indicateurs.")
-                except Exception as e:
-                    st.error(f"Erreur : {e}")
+                elif is_sub:
+                    st.success(f"Lot #{id_lot} soumis pour validation — {len(records)} lignes.")
+                else:
+                    st.success(f"Brouillon #{id_lot} enregistré — {len(records)} lignes.")
+
+                time.sleep(1)
+                st.rerun()
 
     st.markdown(render_section_close(), unsafe_allow_html=True)
 
 
-def render_draft_lots(data_type, id_province, user, drafts):
-    """Affiche les lots en brouillon."""
+def render_draft_lots(data_type, user, drafts):
     if not drafts:
-        st.markdown(render_empty(
-            "EDIT", "Aucun brouillon",
-            "Aucun lot en brouillon."
-        ), unsafe_allow_html=True)
+        st.markdown(render_empty("EDIT", "Aucun brouillon", "Aucun lot en brouillon."), unsafe_allow_html=True)
         return
 
-    st.markdown(render_notice(
-        "Vos brouillons sont sauvegardés mais pas encore envoyés pour validation.",
-        "info"
-    ), unsafe_allow_html=True)
+    st.markdown(render_notice("Vos brouillons sont sauvegardés mais pas encore envoyés pour validation.", "info"), unsafe_allow_html=True)
 
     for lot in drafts:
-        if data_type == "indicateurs":
-            details = get_staging_indicateurs(lot_id=lot["lot_id"])
-        else:
-            details = get_staging_reclamations(lot_id=lot["lot_id"])
-
-        if not details:
-            continue
-
-        first = details[0]
+        id_lot = lot["id_lot"]
+        details = get_lot_details_indicateurs(id_lot) if data_type == "indicateurs" else get_lot_details_reclamations(id_lot)
 
         with st.expander(
-            f"Brouillon — {get_mois_name(lot['mois'])} {lot['annee']} — "
-            f"{first.get('nom_centre', '—')} — {lot['nb_enregistrements']} enreg.",
-            expanded=False,
+            f"Brouillon #{id_lot} — {get_mois_name(lot['mois'])} {lot['annee']} — {lot['nom_centre']} — {lot['nb_enregistrements']} enreg.",
+            expanded=False
         ):
+            st.markdown(f"**Statut :** {get_status_badge(lot['statut'])}", unsafe_allow_html=True)
+
             st.markdown(render_lot_detail_card({
-                "lot_id": lot["lot_id"],
-                "agent": first.get("soumis_par_nom", "—"),
-                "centre": first.get("nom_centre", "—"),
-                "mois": get_mois_name(lot["mois"]),
-                "annee": lot["annee"],
-                "nb": lot["nb_enregistrements"],
-                "date_soum": format_datetime(lot.get("date_modification")),
+                "lot_id": lot["id_lot"], "agent": lot["cree_par_nom"], "centre": lot["nom_centre"],
+                "mois": get_mois_name(lot['mois']), "annee": lot['annee'], "nb": lot["nb_enregistrements"],
+                "date_soum": format_datetime(lot.get("date_creation")),
             }), unsafe_allow_html=True)
 
-            st.markdown("**Modifier les valeurs :**")
+            if not details:
+                st.info("Aucune donnée.")
+                continue
 
+            st.markdown("**Modifier les valeurs :**")
             df = pd.DataFrame(details)
+            cfg = {"ID": None}
 
             if data_type == "indicateurs":
-                editable_df = df[[
-                    "id_staging", "code_indicateur", "libelle_indicateur",
-                    "categorie", "unite", "valeur_indicateur"
-                ]].copy()
-                editable_df.columns = ["ID", "Code", "Indicateur", "Catégorie", "Unité", "Valeur"]
-
-                edited = st.data_editor(
-                    editable_df,
-                    use_container_width=True, hide_index=True,
-                    disabled=["ID", "Code", "Indicateur", "Catégorie", "Unité"],
-                    column_config={
-                        "ID": None,
-                        # ✅ FIX: Permettre l'affichage natif des entiers vs réels sans forcer format="%.2f"
-                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
-                    },
-                    key=f"draft_ind_{lot['lot_id']}",
-                )
+                df_show = df[["id_donnee", "code_indicateur", "libelle_indicateur", "categorie", "unite", "valeur_indicateur"]].copy()
+                df_show.columns = ["ID", "Code", "Indicateur", "Catégorie", "Unité", "Valeur"]
+                cfg["Valeur"] = st.column_config.NumberColumn("Valeur", min_value=0)
             else:
-                editable_df = df[[
-                    "id_staging", "code_type", "libelle_reclamation", "valeur_brute"
-                ]].copy()
-                editable_df.columns = ["ID", "Code", "Type", "Valeur"]
-
-                edited = st.data_editor(
-                    editable_df,
-                    use_container_width=True, hide_index=True,
-                    disabled=["ID", "Code", "Type"],
-                    column_config={
-                        "ID": None,
-                        # ✅ FIX: Permettre l'affichage natif sans format forcé
-                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
-                    },
-                    key=f"draft_rec_{lot['lot_id']}",
+                df_show = pd.DataFrame()
+                df_show["ID"] = df["id_donnee"]
+                df_show["Code"] = df["code_type"]
+                df_show["Type"] = df["libelle_reclamation"]
+                df_show["Valeur"] = df.apply(
+                    lambda r: (r.get("commentaire_autre") or "—") if r.get("code_type") == "AUTRES" else r.get("valeur_brute", 0),
+                    axis=1
                 )
+                cfg["Valeur"] = st.column_config.TextColumn("Valeur")
+
+            edited = st.data_editor(
+                df_show, use_container_width=True, hide_index=True,
+                disabled=[c for c in df_show.columns if c != "Valeur"],
+                column_config=cfg,
+                key=f"draft_ed_{data_type}_{id_lot}"
+            )
 
             st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
-
             bc1, bc2, bc3, _ = st.columns([1.5, 1.8, 1.2, 2])
 
             with bc1:
-                if st.button("Enregistrer", key=f"save_draft_{data_type}_{lot['lot_id']}",
-                             use_container_width=True):
-                    try:
-                        for i, row in edited.iterrows():
-                            original = details[i]
-                            if data_type == "indicateurs":
-                                update_staging_record("indicateurs", original["id_staging"], {
-                                    "valeur_indicateur": float(row["Valeur"]),
-                                })
+                if st.button("Enregistrer", key=f"save_dr_{data_type}_{id_lot}", use_container_width=True):
+                    for i, row in edited.iterrows():
+                        orig = details[i]
+                        if data_type == "indicateurs":
+                            updates = {"valeur_indicateur": float(row["Valeur"])}
+                        else:
+                            if orig.get("code_type") == "AUTRES":
+                                updates = {"commentaire_autre": str(row["Valeur"])}
                             else:
-                                update_staging_record("reclamations", original["id_staging"], {
-                                    "nombre_reclamations": int(row["Valeur"]),
-                                    "valeur_brute": float(row["Valeur"]),
-                                })
-                        st.success("Modifications enregistrées.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
+                                updates = {"valeur_brute": float(row["Valeur"]), "nombre_reclamations": int(float(row["Valeur"]))}
+                        update_donnee_with_correction(orig["id_donnee"], updates, user["id"], None)
+                    st.success("Modifications enregistrées.")
+                    time.sleep(1)
+                    st.rerun()
 
             with bc2:
                 st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-                if st.button("Soumettre pour validation",
-                             key=f"submit_draft_{data_type}_{lot['lot_id']}",
-                             type="primary", use_container_width=True):
-                    try:
-                        for i, row in edited.iterrows():
-                            original = details[i]
-                            if data_type == "indicateurs":
-                                update_staging_record("indicateurs", original["id_staging"], {
-                                    "valeur_indicateur": float(row["Valeur"]),
-                                })
+                if st.button("Soumettre pour validation", key=f"sub_dr_{data_type}_{id_lot}", type="primary", use_container_width=True):
+                    for i, row in edited.iterrows():
+                        orig = details[i]
+                        if data_type == "indicateurs":
+                            updates = {"valeur_indicateur": float(row["Valeur"])}
+                        else:
+                            if orig.get("code_type") == "AUTRES":
+                                updates = {"commentaire_autre": str(row["Valeur"])}
                             else:
-                                update_staging_record("reclamations", original["id_staging"], {
-                                    "nombre_reclamations": int(row["Valeur"]),
-                                    "valeur_brute": float(row["Valeur"]),
-                                })
-                        submit_lot(data_type, lot["lot_id"], user["id"])
-                        st.success("Brouillon soumis pour validation.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
+                                updates = {"valeur_brute": float(row["Valeur"]), "nombre_reclamations": int(float(row["Valeur"]))}
+                        update_donnee_with_correction(orig["id_donnee"], updates, user["id"], None)
+                    submit_lot(id_lot, user["id"])
+                    st.success("Brouillon soumis pour validation.")
+                    time.sleep(1)
+                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with bc3:
                 st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-                confirm_key = f"confirm_del_{lot['lot_id']}"
+                confirm_key = f"conf_del_{id_lot}"
                 if confirm_key not in st.session_state:
                     st.session_state[confirm_key] = False
-
                 if not st.session_state[confirm_key]:
-                    if st.button("Supprimer", key=f"del_draft_{data_type}_{lot['lot_id']}",
-                                 use_container_width=True):
+                    if st.button("Supprimer", key=f"del_dr_{data_type}_{id_lot}", use_container_width=True):
                         st.session_state[confirm_key] = True
                         st.rerun()
                 else:
-                    if st.button("Confirmer", key=f"confirm_{data_type}_{lot['lot_id']}",
-                                 use_container_width=True):
-                        try:
-                            delete_lot(data_type, lot["lot_id"])
-                            st.session_state[confirm_key] = False
-                            st.success("Brouillon supprimé.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erreur : {e}")
+                    if st.button("Confirmer", key=f"conf_{data_type}_{id_lot}", use_container_width=True):
+                        delete_draft_lot(id_lot)
+                        st.session_state[confirm_key] = False
+                        st.success("Brouillon supprimé.")
+                        time.sleep(1)
+                        st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
 
-def render_rejected_lots(data_type, id_province, user, rejected):
-    """Affiche les lots rejetés avec traçabilité des corrections."""
-    role = user["role"]
-
-    if not rejected:
-        st.markdown(render_empty(
-            "CHECK_CIRCLE", "Aucun lot rejeté",
-            "Aucune donnée nécessitant de correction"
-        ), unsafe_allow_html=True)
+def render_rejected_lots(data_type, user, rejected_lots, role):
+    if not rejected_lots:
+        st.markdown(render_empty("CHECK_CIRCLE", "Aucun lot rejeté", "Aucune donnée à corriger."), unsafe_allow_html=True)
         return
 
-    who_can_correct = "Vous pouvez" if role == "agent_dp" else "En tant qu'admin DP, vous pouvez"
     st.markdown(render_notice(
-        f"Les lots ci-dessous ont été rejetés. {who_can_correct} consulter le motif, "
-        f"corriger les données, puis les resoumettre pour validation. "
+        f"Les lots ci-dessous contiennent des lignes rejetées. Vous pouvez corriger les valeurs et resoumettre. "
         f"<strong>Toutes vos modifications seront tracées.</strong>",
         "warning"
     ), unsafe_allow_html=True)
 
-    for lot in rejected:
-        status_label = (
-            "Rejeté par Admin DP" if lot["statut"] == "rejete_dp"
-            else "Rejeté par Admin Régional"
-        )
+    def _val_disp_rec(r):
+        """Retourne la valeur en STRING pour l'affichage/édition."""
+        if r.get("code_type") == "AUTRES":
+            return str(r.get("commentaire_autre") or "")
+        v = r.get("valeur_brute", 0)
+        if v is None:
+            return "0"
+        if isinstance(v, float) and v == int(v):
+            return str(int(v))
+        return str(v)
 
-        # ✅ FIX: expanded=False par défaut pour éviter l'erreur React 185
+    for lot in rejected_lots:
+        id_lot = lot["id_lot"]
+        details = get_lot_details_indicateurs(id_lot) if data_type == "indicateurs" else get_lot_details_reclamations(id_lot)
+        rej_lines = [d for d in details if d["statut"] in ("rejete_dp", "rejete_regional")]
+
+        status_lbl = "Rejeté par Admin DP" if lot["statut"] == "partiellement_rejete_dp" else "Rejeté par Admin Régional"
+
         with st.expander(
-            f"{status_label} — {get_mois_name(lot['mois'])} {lot['annee']} — "
-            f"{lot['nb_enregistrements']} enreg.",
-            expanded=False, 
+            f"{status_lbl} — Lot #{id_lot} — {get_mois_name(lot['mois'])} {lot['annee']} — "
+            f"{lot['nom_centre']} — {len(rej_lines)} ligne(s) rejetée(s)",
+            expanded=False
         ):
-            if data_type == "indicateurs":
-                details = get_staging_indicateurs(lot_id=lot["lot_id"])
-            else:
-                details = get_staging_reclamations(lot_id=lot["lot_id"])
-
-            if not details:
-                st.info("Aucune donnée trouvée.")
-                continue
-
-            first = details[0]
-            comment_dp = first.get("commentaire_dp", "")
-            comment_reg = first.get("commentaire_regional", "")
-            motif = comment_reg or comment_dp
-
-            if motif:
-                st.markdown(render_notice(
-                    f"<strong>Motif du rejet :</strong> {motif}", "error"
-                ), unsafe_allow_html=True)
-
+            # ── TÊTE DU LOT ──
+            st.markdown(f"**Statut :** {get_status_badge(lot['statut'])}", unsafe_allow_html=True)
             st.markdown(render_lot_detail_card({
-                "lot_id": lot["lot_id"],
-                "agent": first.get("soumis_par_nom", "—"),
-                "centre": first.get("nom_centre", "—"),
-                "mois": get_mois_name(lot["mois"]),
-                "annee": lot["annee"],
+                "lot_id": lot["id_lot"], "agent": lot["cree_par_nom"], "centre": lot["nom_centre"],
+                "mois": get_mois_name(lot['mois']), "annee": lot['annee'],
                 "nb": lot["nb_enregistrements"],
-                "date_soum": format_datetime(first.get("date_soumission")),
+                "date_soum": format_datetime(lot.get("date_soumission")),
             }), unsafe_allow_html=True)
 
-            st.markdown("**Corriger les données :**")
-
-            df = pd.DataFrame(details)
-
-            if data_type == "indicateurs":
-                editable_df = df[[
-                    "id_staging", "code_indicateur", "libelle_indicateur",
-                    "categorie", "unite", "valeur_indicateur"
-                ]].copy()
-                editable_df.columns = ["ID", "Code", "Indicateur", "Catégorie", "Unité", "Valeur"]
-
-                edited = st.data_editor(
-                    editable_df,
-                    use_container_width=True, hide_index=True,
-                    disabled=["ID", "Code", "Indicateur", "Catégorie", "Unité"],
-                    column_config={
-                        "ID": None,
-                        # ✅ FIX
-                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
-                    },
-                    key=f"edit_ind_{lot['lot_id']}",
-                )
-            else:
-                editable_df = df[[
-                    "id_staging", "code_type", "libelle_reclamation", "valeur_brute"
-                ]].copy()
-                editable_df.columns = ["ID", "Code", "Type", "Valeur"]
-
-                edited = st.data_editor(
-                    editable_df,
-                    use_container_width=True, hide_index=True,
-                    disabled=["ID", "Code", "Type"],
-                    column_config={
-                        "ID": None,
-                        # ✅ FIX
-                        "Valeur": st.column_config.NumberColumn("Valeur", min_value=0),
-                    },
-                    key=f"edit_rec_{lot['lot_id']}",
+            if lot.get("commentaire_transfert"):
+                st.markdown(
+                    f"<div style='background:#FEF3C7;border-left:4px solid #F59E0B;"
+                    f"padding:1rem;border-radius:6px;margin:0.75rem 0;'>"
+                    f"<div style='font-weight:700;color:#78350F;margin-bottom:0.35rem;'>"
+                    f"Message de {lot.get('admin_dp_nom', 'Admin DP')} :"
+                    f"</div>"
+                    f"<div style='color:#78350F;font-style:italic;'>« {lot['commentaire_transfert']} »</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
                 )
 
-            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-            bc1, bc2, _ = st.columns([2, 1.5, 3])
+            if rej_lines:
+                st.markdown("**Lignes à corriger (chaque ligne a son motif spécifique) :**")
 
-            with bc1:
-                st.markdown('<div class="btn-success">', unsafe_allow_html=True)
-                if st.button("Corriger et resoumettre",
-                             key=f"resub_{data_type}_{lot['lot_id']}", type="primary",
-                             use_container_width=True):
-                    try:
-                        for i, row in edited.iterrows():
-                            original = details[i]
-                            code_element = (original.get("code_indicateur")
-                                            if data_type == "indicateurs"
-                                            else original.get("code_type"))
-                            libelle_element = (original.get("libelle_indicateur")
-                                               if data_type == "indicateurs"
-                                               else original.get("libelle_reclamation"))
+                if data_type == "indicateurs":
+                    rows = [{
+                        "ID": d["id_donnee"], "Code": d["code_indicateur"],
+                        "Indicateur": d["libelle_indicateur"], "Unité": d["unite"],
+                        "Motif de rejet": d.get("dernier_commentaire") or "Non spécifié",
+                        "Valeur": d["valeur_indicateur"]
+                    } for d in rej_lines]
+                    df_rej = pd.DataFrame(rows)
+                    cfg = {
+                        "ID": None,
+                        "Motif de rejet": st.column_config.TextColumn("Motif de rejet", width="large"),
+                        "Valeur": st.column_config.NumberColumn("Nouvelle Valeur", min_value=0),
+                    }
+                else:
+                    rows = [{
+                        "ID": d["id_donnee"], "Code": d["code_type"],
+                        "Type": d["libelle_reclamation"],
+                        "Motif de rejet": d.get("dernier_commentaire") or "Non spécifié",
+                        "Valeur": _val_disp_rec(d)
+                    } for d in rej_lines]
+                    df_rej = pd.DataFrame(rows)
+                    df_rej["Valeur"] = df_rej["Valeur"].astype(str)
+                    cfg = {
+                        "ID": None,
+                        "Motif de rejet": st.column_config.TextColumn("Motif de rejet", width="large"),
+                        "Valeur": st.column_config.TextColumn("Nouvelle Valeur"),
+                    }
 
-                            if data_type == "indicateurs":
-                                update_staging_record_with_history(
-                                    "indicateurs", original["id_staging"],
-                                    {"valeur_indicateur": float(row["Valeur"])},
-                                    lot_id=lot["lot_id"],
-                                    code_element=code_element,
-                                    libelle_element=libelle_element,
-                                    motif_rejet=motif,
-                                    user_id=user["id"],
-                                    role=role,
-                                )
-                            else:
-                                update_staging_record_with_history(
-                                    "reclamations", original["id_staging"],
-                                    {
-                                        "nombre_reclamations": int(row["Valeur"]),
-                                        "valeur_brute": float(row["Valeur"])
-                                    },
-                                    lot_id=lot["lot_id"],
-                                    code_element=code_element,
-                                    libelle_element=libelle_element,
-                                    motif_rejet=motif,
-                                    user_id=user["id"],
-                                    role=role,
-                                )
+                edited = st.data_editor(
+                    df_rej, use_container_width=True, hide_index=True,
+                    disabled=[c for c in df_rej.columns if c != "Valeur"],
+                    column_config=cfg,
+                    key=f"rej_ed_{data_type}_{id_lot}"
+                )
 
-                        submit_lot(data_type, lot["lot_id"], user["id"])
-                        AuthManager.log_action(
-                            user["id"], "CORRECTION_RESOUMISSION",
-                            f"staging_{data_type}_dp",
-                            details={"lot_id": lot["lot_id"], "role": role}
-                        )
-                        st.success("Corrections enregistrées et lot resoumis. Historique conservé.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+                bc1, _ = st.columns([2, 3])
+                with bc1:
+                    st.markdown('<div class="btn-success">', unsafe_allow_html=True)
+                    if st.button("Corriger et resoumettre",
+                                 key=f"resub_{data_type}_{id_lot}",
+                                 type="primary", use_container_width=True):
+                        try:
+                            for i, row in edited.iterrows():
+                                orig = rej_lines[i]
+                                if data_type == "indicateurs":
+                                    updates = {"valeur_indicateur": float(row["Valeur"])}
+                                else:
+                                    if orig.get("code_type") == "AUTRES":
+                                        updates = {"commentaire_autre": str(row["Valeur"]).strip() or None}
+                                    else:
+                                        raw = str(row["Valeur"]).replace(",", ".").strip()
+                                        new_val = float(raw) if raw else 0.0
+                                        updates = {"valeur_brute": new_val, "nombre_reclamations": int(new_val)}
+                                update_donnee_with_correction(orig["id_donnee"], updates, user["id"], None)
 
-            with bc2:
-                if st.button("Remettre en brouillon",
-                             key=f"draft_{data_type}_{lot['lot_id']}",
-                             use_container_width=True):
-                    reset_lot_for_correction(data_type, lot["lot_id"])
-                    st.info("Lot remis en brouillon.")
-                    st.rerun()
+                            if lot.get("commentaire_transfert"):
+                                marquer_transfert_traite(id_lot)
+
+                            resubmit_lot_after_rejection(id_lot, user["id"])
+                            AuthManager.log_action(user["id"], "CORRECTION_RESOUMISSION", "lot_saisie", id_lot, {"role": role})
+                            st.success("Corrections enregistrées et lot resoumis.")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur : {e}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+            render_historique_complet_lot(id_lot, key_prefix=f"rej_{data_type}")
 
 
 def _render_history(data_type, id_province):
-    """Historique complet avec traçabilité des corrections."""
-    st.markdown(render_section_open("Historique des saisies", "ARCHIVE"),
-                unsafe_allow_html=True)
+    st.markdown(render_section_open("Historique des saisies", "ARCHIVE"), unsafe_allow_html=True)
 
-    f_st = st.selectbox(
-        "Filtrer par statut",
-        ["Tous", "brouillon", "soumis", "valide_dp",
-         "rejete_dp", "valide_regional", "rejete_regional"],
-        format_func=lambda x: "Tous les statuts" if x == "Tous" else STATUS_LABELS.get(x, x),
-        key="hi_s"
-    )
+    st.markdown("**Filtres :**")
+    f1, f2, f3, f4 = st.columns(4)
 
-    lots = get_staging_lots(
-        id_province=id_province,
-        statut=f_st if f_st != "Tous" else None,
-        data_type=data_type,
-    )
-
-    if lots:
-        rows = []
-        for l in lots:
-            corrections = get_lot_corrections(l["lot_id"])
-            nb_corrections = len(corrections) if corrections else 0
-
-            rows.append({
-                "Lot": l["lot_id"][-15:],
-                "Année": l["annee"],
-                "Mois": get_mois_name(l["mois"]),
-                "Statut": STATUS_LABELS.get(l["statut"], l["statut"]),
-                "Enreg.": l["nb_enregistrements"],
-                "Corrections": nb_corrections,
-                "Créé le": format_datetime(l.get("date_creation")),
-            })
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        lot_opts = {
-            f"{l['lot_id'][-15:]}... — {get_mois_name(l['mois'])} {l['annee']} "
-            f"({STATUS_LABELS.get(l['statut'], l['statut'])})": l
-            for l in lots
-        }
-        sel = st.selectbox(
-            "Voir les détails d'un lot",
-            ["—"] + list(lot_opts.keys()),
-            key="det_h"
+    with f1:
+        all_statuses = ["Tous", "brouillon", "soumis", "valide_dp", "partiellement_rejete_dp", "valide_regional", "partiellement_rejete_regional"]
+        f_st = st.selectbox(
+            "Statut", all_statuses,
+            format_func=lambda x: "Tous les statuts" if x == "Tous" else STATUS_LABELS.get(x, x),
+            key=f"hi_s_{data_type}"
         )
 
-        if sel != "—":
-            lot = lot_opts[sel]
+    lots_all = get_staging_lots(
+        id_province=id_province,
+        statut=f_st if f_st != "Tous" else None,
+        type_donnees=data_type
+    ) or []
+
+    with f2:
+        annees_dispo = sorted(set(l["annee"] for l in lots_all), reverse=True)
+        f_annee = st.selectbox("Année", ["Toutes"] + annees_dispo, key=f"hi_a_{data_type}")
+
+    with f3:
+        mois_dispo = sorted(set(l["mois"] for l in lots_all))
+        f_mois = st.selectbox("Mois", ["Tous"] + mois_dispo, format_func=lambda x: "Tous les mois" if x == "Tous" else MOIS_FR[x], key=f"hi_m_{data_type}")
+
+    with f4:
+        centres_dispo = sorted(set(l["nom_centre"] for l in lots_all))
+        f_centre = st.selectbox("Centre", ["Tous"] + centres_dispo, key=f"hi_c_{data_type}")
+
+    lots = [
+        l for l in lots_all
+        if (f_annee == "Toutes" or l["annee"] == f_annee)
+        and (f_mois == "Tous" or l["mois"] == f_mois)
+        and (f_centre == "Tous" or l["nom_centre"] == f_centre)
+    ]
+
+    if not lots:
+        st.markdown(render_empty("INBOX", "Aucun lot trouvé", "Ajustez vos filtres."), unsafe_allow_html=True)
+        st.markdown(render_section_close(), unsafe_allow_html=True)
+        return
+
+    paginated, curr_page, total_pages = paginate_list(lots, f"histoi_{data_type}")
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    rows = [{
+        "Lot": f"#{l['id_lot']}", "Centre": l["nom_centre"],
+        "Créé par": l.get("cree_par_nom", "—"),
+        "Période": f"{get_mois_name(l['mois'])} {l['annee']}",
+        "Statut": STATUS_LABELS.get(l["statut"], l["statut"]),
+        "Enreg.": l["nb_enregistrements"],
+        "Créé le": format_datetime(l["date_creation"])
+    } for l in paginated]
+
+    st.dataframe(
+        pd.DataFrame(rows),
+        use_container_width=True,
+        hide_index=True,
+        height=min(400, 40 + 35 * len(rows))
+    )
+
+    st.markdown("---")
+    lot_opts = {f"Lot #{l['id_lot']} — {l['nom_centre']} ({get_mois_name(l['mois'])} {l['annee']})": l for l in lots}
+    sel = st.selectbox("Voir les détails d'un lot", ["—"] + list(lot_opts.keys()), key=f"det_h_{data_type}")
+
+    if sel != "—":
+        lot = lot_opts[sel]
+        id_lot = lot["id_lot"]
+
+        # ✅ TÊTE DU LOT
+        st.markdown(f"**Statut global :** {get_status_badge(lot['statut'])}", unsafe_allow_html=True)
+        st.markdown(render_lot_detail_card({
+            "lot_id": lot["id_lot"], "agent": lot["cree_par_nom"], "centre": lot["nom_centre"],
+            "mois": get_mois_name(lot['mois']), "annee": lot['annee'],
+            "nb": lot["nb_enregistrements"], "date_soum": format_datetime(lot.get("date_soumission")),
+        }), unsafe_allow_html=True)
+
+        details = get_lot_details_indicateurs(id_lot) if data_type == "indicateurs" else get_lot_details_reclamations(id_lot)
+
+        if details:
+            st.markdown("#### Données du lot")
+            render_data_table_with_history(
+                details=details,
+                id_lot=id_lot,
+                data_type=data_type,
+                key_prefix=f"histo_{data_type}"
+            )
+
+    st.markdown(render_section_close(), unsafe_allow_html=True)
+
+
+def render_modifications_agent(data_type, user, demandes):
+    """Onglet pour l'agent : lots à modifier suite à demande admin_dp."""
+    if not demandes:
+        st.markdown(render_empty("CHECK_CIRCLE", "Aucune modification demandée",
+                                  "Aucun lot ne vous a été délégué pour modification."),
+                    unsafe_allow_html=True)
+        return
+
+    st.markdown(render_notice(
+        "L'Admin DP vous a délégué la modification de ces lots. "
+        "Modifiez les valeurs demandées et resoumettez.",
+        "warning"
+    ), unsafe_allow_html=True)
+
+    def _val_disp(r):
+        if r.get("code_type") == "AUTRES":
+            return str(r.get("commentaire_autre") or "")
+        v = r.get("valeur_brute", 0)
+        if v is None:
+            return "0"
+        if isinstance(v, float) and v == int(v):
+            return str(int(v))
+        return str(v)
+
+    for lot in demandes:
+        id_lot = lot["id_lot"]
+        details = get_lot_details_indicateurs(id_lot) if data_type == "indicateurs" else get_lot_details_reclamations(id_lot)
+        lignes_modif = [d for d in details if d["statut"] == "modif_agent_dp"]
+
+        with st.expander(
+            f"Demande de {lot['demandeur_nom']} — Lot #{id_lot} — {get_mois_name(lot['mois'])} {lot['annee']} — "
+            f"{lot['nom_centre']} — {len(lignes_modif)} ligne(s)",
+            expanded=False
+        ):
+            st.markdown(f"**Statut :** {get_status_badge(lot['statut'])}", unsafe_allow_html=True)
+
             st.markdown(
-                f"**Statut :** {get_status_badge(lot['statut'])}",
+                f"<div style='background:#FEF3C7;border-left:4px solid #F59E0B;"
+                f"padding:1rem;border-radius:6px;margin:0.75rem 0;'>"
+                f"<div style='font-weight:700;color:#78350F;'>Message de {lot['demandeur_nom']} (Admin DP) :</div>"
+                f"<div style='color:#78350F;font-style:italic;margin-top:0.35rem;'>« {lot['commentaire_demande']} »</div>"
+                f"</div>",
                 unsafe_allow_html=True
             )
 
-            # ── Données du lot ──
+            if not lignes_modif:
+                st.info("Aucune ligne à modifier.")
+                render_historique_complet_lot(id_lot, key_prefix=f"modag_{data_type}")
+                continue
+
+            st.markdown("**Lignes à modifier :**")
+
+            cfg = {"ID": None}
             if data_type == "indicateurs":
-                details = get_staging_indicateurs(lot_id=lot["lot_id"])
+                rows = [{"ID": d["id_donnee"], "Code": d["code_indicateur"],
+                         "Indicateur": d["libelle_indicateur"], "Unité": d["unite"],
+                         "Valeur": d["valeur_indicateur"]} for d in lignes_modif]
+                cfg["Valeur"] = st.column_config.NumberColumn("Nouvelle Valeur", min_value=0)
             else:
-                details = get_staging_reclamations(lot_id=lot["lot_id"])
+                rows = [{"ID": d["id_donnee"], "Code": d["code_type"],
+                         "Type": d["libelle_reclamation"],
+                         "Valeur": _val_disp(d)}
+                         for d in lignes_modif]
+                cfg["Valeur"] = st.column_config.TextColumn("Nouvelle Valeur")
 
-            if details:
-                st.markdown("#### Données actuelles")
-                df_d = pd.DataFrame(details)
-                if data_type == "indicateurs":
-                    cols_source = ["code_indicateur", "libelle_indicateur",
-                                   "categorie", "unite", "valeur_indicateur"]
-                    available = [c for c in cols_source if c in df_d.columns]
-                    df_show = df_d[available].copy()
-                    df_show = df_show.rename(columns={
-                        "code_indicateur": "Code",
-                        "libelle_indicateur": "Indicateur",
-                        "categorie": "Catégorie",
-                        "unite": "Unité",
-                        "valeur_indicateur": "Valeur",
-                    })
-                else:
-                    cols_source = ["code_type", "libelle_reclamation",
-                                   "nombre_reclamations", "valeur_brute"]
-                    available = [c for c in cols_source if c in df_d.columns]
-                    df_show = df_d[available].copy()
-                    df_show = df_show.rename(columns={
-                        "code_type": "Code",
-                        "libelle_reclamation": "Type",
-                        "nombre_reclamations": "Nombre",
-                        "valeur_brute": "Valeur",
-                    })
+            df_edit = pd.DataFrame(rows)
+            if data_type == "reclamations":
+                df_edit["Valeur"] = df_edit["Valeur"].astype(str)
 
-                st.dataframe(df_show, use_container_width=True, hide_index=True)
+            edited = st.data_editor(
+                df_edit, use_container_width=True, hide_index=True,
+                disabled=[c for c in df_edit.columns if c != "Valeur"],
+                column_config=cfg,
+                key=f"modag_ed_{data_type}_{id_lot}"
+            )
 
-            # ── Motif de rejet si applicable ──
-            if lot["statut"] in ["rejete_dp", "rejete_regional"] and details:
-                cm = (details[0].get("commentaire_dp") or
-                      details[0].get("commentaire_regional"))
-                if cm:
-                    st.markdown(render_notice(
-                        f"Motif du rejet : {cm}", "warning"
-                    ), unsafe_allow_html=True)
+            st.markdown('<div class="btn-success">', unsafe_allow_html=True)
+            if st.button("Enregistrer et resoumettre", key=f"modag_save_{data_type}_{id_lot}", type="primary"):
+                for i, row in edited.iterrows():
+                    orig = lignes_modif[i]
+                    if data_type == "indicateurs":
+                        updates = {"valeur_indicateur": float(row["Valeur"])}
+                    else:
+                        if orig.get("code_type") == "AUTRES":
+                            updates = {"commentaire_autre": str(row["Valeur"]).strip() or None}
+                        else:
+                            raw = str(row["Valeur"]).replace(",", ".").strip()
+                            new_val = float(raw) if raw else 0.0
+                            updates = {"valeur_brute": new_val, "nombre_reclamations": int(new_val)}
+                    update_donnee_with_correction(orig["id_donnee"], updates, user["id"], "Modification agent suite à demande admin DP")
 
-            # ── Historique des corrections ──
-            corrections = get_lot_corrections(lot["lot_id"])
-            if corrections:
-                st.markdown("---")
-                st.markdown("#### Historique des corrections")
-                st.markdown(render_notice(
-                    f"Ce lot a été corrigé <strong>{len(corrections)}</strong> fois. "
-                    f"Voici le détail des modifications :",
-                    "info"
-                ), unsafe_allow_html=True)
+                resoumettre_apres_modif_agent(id_lot, user["id"])
+                AuthManager.log_action(user["id"], "MODIF_AGENT_APRES_DEM", "lot_saisie", id_lot)
+                st.success("Modifications enregistrées. Le lot repart en validation Admin DP → Régional.")
+                time.sleep(1)
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-                # Tableau des corrections
-                corr_rows = []
-                for c in corrections:
-                    corr_rows.append({
-                        "Date": format_datetime(c["date_correction"]),
-                        "Corrigé par": c.get("corrige_par_nom", "—"),
-                        "Rôle": c.get("role_correcteur", "—"),
-                        "Élément": c.get("libelle_element", c.get("code_element", "—")),
-                        "Champ": c["champ_modifie"],
-                        "Ancienne valeur": c["ancienne_valeur"],
-                        "Nouvelle valeur": c["nouvelle_valeur"],
-                    })
-
-                df_corr = pd.DataFrame(corr_rows)
-                st.dataframe(df_corr, use_container_width=True, hide_index=True)
-
-                # Statistique unique : Total corrections
-                st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-                col_s1, _, _ = st.columns([1, 1, 2])
-                with col_s1:
-                    st.metric("Total corrections", len(corrections))
-    else:
-        st.markdown(render_empty("INBOX", "Aucun lot trouvé"),
-                    unsafe_allow_html=True)
-
-    st.markdown(render_section_close(), unsafe_allow_html=True)
+            render_historique_complet_lot(id_lot, key_prefix=f"modag_{data_type}")

@@ -1,30 +1,46 @@
 -- ═══════════════════════════════════════════════════════════════
--- TABLES DE RÉFÉRENCE — Provinces, Centres, Types
--- Utilisées par l'application Streamlit
+-- TABLES DE RÉFÉRENCE NORMALISÉES (app_auth & app_staging)
 -- ═══════════════════════════════════════════════════════════════
 
--- ─── Table des provinces ───
+-- ─── 1. Rôles (Sécurité) ───
+DROP TABLE IF EXISTS app_auth.ref_role CASCADE;
+CREATE TABLE app_auth.ref_role (
+    id_role         SERIAL PRIMARY KEY,
+    code_role       VARCHAR(50) UNIQUE NOT NULL,
+    libelle_role    VARCHAR(100) NOT NULL
+);
+
+-- ─── 2. Provinces ───
 DROP TABLE IF EXISTS app_staging.ref_province CASCADE;
 CREATE TABLE app_staging.ref_province (
-    id_province         INTEGER PRIMARY KEY,
-    code_province       VARCHAR(20) UNIQUE NOT NULL,
-    nom_province        VARCHAR(100) NOT NULL,
-    est_siege           BOOLEAN DEFAULT FALSE,
-    date_creation       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id_province     INTEGER PRIMARY KEY,
+    code_province   VARCHAR(20) UNIQUE NOT NULL,
+    nom_province    VARCHAR(100) NOT NULL,
+    est_siege       BOOLEAN DEFAULT FALSE,
+    date_creation   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ─── Table des centres ───
+-- ─── 3. Centres ───
 DROP TABLE IF EXISTS app_staging.ref_centre CASCADE;
 CREATE TABLE app_staging.ref_centre (
-    id_centre           INTEGER PRIMARY KEY,
-    code_centre         VARCHAR(50) UNIQUE NOT NULL,
-    nom_centre          VARCHAR(200) NOT NULL,
-    type_centre         VARCHAR(50),
-    id_province         INTEGER REFERENCES app_staging.ref_province(id_province),
-    date_creation       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id_centre       INTEGER PRIMARY KEY,
+    code_centre     VARCHAR(50) UNIQUE NOT NULL,
+    nom_centre      VARCHAR(200) NOT NULL,
+    type_centre     VARCHAR(50),
+    id_province     INTEGER NOT NULL REFERENCES app_staging.ref_province(id_province),
+    date_creation   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ─── Table des types d'indicateurs ───
+-- ─── 4. Périodes (NOUVEAU - Normalisation Temporelle) ───
+DROP TABLE IF EXISTS app_staging.ref_periode CASCADE;
+CREATE TABLE app_staging.ref_periode (
+    id_periode      SERIAL PRIMARY KEY,
+    annee           SMALLINT NOT NULL,
+    mois            SMALLINT NOT NULL,
+    UNIQUE(annee, mois)
+);
+
+-- ─── 5. Types d'indicateurs ───
 DROP TABLE IF EXISTS app_staging.ref_type_indicateur CASCADE;
 CREATE TABLE app_staging.ref_type_indicateur (
     id_type_indicateur  SERIAL PRIMARY KEY,
@@ -37,7 +53,7 @@ CREATE TABLE app_staging.ref_type_indicateur (
     date_creation       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ─── Table des types de réclamations ───
+-- ─── 6. Types de réclamations ───
 DROP TABLE IF EXISTS app_staging.ref_type_reclamation CASCADE;
 CREATE TABLE app_staging.ref_type_reclamation (
     id_type_reclamation SERIAL PRIMARY KEY,
@@ -51,12 +67,7 @@ CREATE TABLE app_staging.ref_type_reclamation (
     date_creation       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ─── Index ───
-CREATE INDEX IF NOT EXISTS idx_ref_centre_province ON app_staging.ref_centre(id_province);
-CREATE INDEX IF NOT EXISTS idx_ref_indic_categorie ON app_staging.ref_type_indicateur(categorie);
-CREATE INDEX IF NOT EXISTS idx_ref_reclam_categorie ON app_staging.ref_type_reclamation(categorie_reclamation);
 
-COMMENT ON TABLE app_staging.ref_province IS 'Référentiel des 6 provinces de Souss-Massa';
-COMMENT ON TABLE app_staging.ref_centre IS 'Référentiel des centres de distribution';
-COMMENT ON TABLE app_staging.ref_type_indicateur IS 'Référentiel des indicateurs de performance DP';
-COMMENT ON TABLE app_staging.ref_type_reclamation IS 'Référentiel des types de réclamations';
+-- ─── Index de performance ───
+CREATE INDEX idx_ref_centre_prov ON app_staging.ref_centre(id_province);
+CREATE INDEX idx_ref_periode_ym ON app_staging.ref_periode(annee, mois);

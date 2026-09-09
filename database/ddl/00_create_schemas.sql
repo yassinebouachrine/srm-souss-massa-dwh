@@ -5,8 +5,8 @@
 CREATE SCHEMA IF NOT EXISTS app_auth;
 CREATE SCHEMA IF NOT EXISTS app_staging;
 
-COMMENT ON SCHEMA app_auth IS 'Authentification et gestion des utilisateurs Streamlit';
-COMMENT ON SCHEMA app_staging IS 'Données saisies via Streamlit + tables de référence';
+COMMENT ON SCHEMA app_auth IS 'Authentification, Sécurité et Utilisateurs';
+COMMENT ON SCHEMA app_staging IS 'Référentiels et données métiers saisies';
 
 GRANT USAGE ON SCHEMA app_auth TO PUBLIC;
 GRANT USAGE ON SCHEMA app_staging TO PUBLIC;

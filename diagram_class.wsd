@@ -1,0 +1,277 @@
+@startuml
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam roundcorner 5
+skinparam nodesep 45
+skinparam ranksep 50
+skinparam classFontSize 11
+skinparam classAttributeFontSize 10
+skinparam shadowing false
+
+' ============================================================
+'                 SCHEMA: APP_AUTH
+' ============================================================
+package "app_auth (Sécurité & Utilisateurs)" #F8FAFC {
+
+    class role {
+        + id_role : INT <<PK>>
+        --
+        code_role : VARCHAR(50) <<UK>>
+        libelle_role : VARCHAR(100)
+    }
+
+    class utilisateurs {
+        + id_utilisateur : INT <<PK>>
+        --
+        username : VARCHAR(100) <<UK>>
+        password_hash : VARCHAR(255)
+        nom_complet : VARCHAR(200)
+        email : VARCHAR(200)
+        id_role : INT <<FK>>
+        id_province : INT <<FK, NULL>>
+        est_actif : BOOLEAN
+        derniere_connexion : TIMESTAMP
+        tentatives_echouees : INT
+        verrouille_jusqua : TIMESTAMP
+        date_creation : TIMESTAMP
+        date_modification : TIMESTAMP
+    }
+
+    class sessions {
+        + id_session : BIGINT <<PK>>
+        --
+        id_utilisateur : INT <<FK>>
+        token_hash : VARCHAR(255) <<UK>>
+        sid_public : VARCHAR(16) <<UK>>
+        date_expiration : TIMESTAMP
+        est_active : BOOLEAN
+        ip_address : VARCHAR(45)
+        ' user_agent : TEXT
+        date_creation : TIMESTAMP
+    }
+
+    class password_reset_tokens {
+        + id_reset : BIGINT <<PK>>
+        --
+        id_utilisateur : INT <<FK>>
+        token_hash : VARCHAR(255) <<UK>>
+        date_expiration : TIMESTAMP
+        utilise : BOOLEAN
+        date_creation : TIMESTAMP
+    }
+
+    class audit_logs {
+        + id_log : BIGINT <<PK>>
+        --
+        id_utilisateur : INT <<FK, NULL>>
+        action : VARCHAR(100)
+        table_cible : VARCHAR(100)
+        id_enregistrement : BIGINT
+        details : JSONB
+        date_action : TIMESTAMP
+    }
+
+    ref_role "1" --> "0..*" utilisateurs
+    utilisateurs "1" --> "0..*" sessions
+    utilisateurs "1" --> "0..*" password_reset_tokens
+    utilisateurs "1" --> "0..*" audit_logs
+}
+
+' ============================================================
+'                 SCHEMA: APP_STAGING
+' ============================================================
+package "app_staging (Référentiels & Métier)" #F0FDF4 {
+
+    package "Référentiels" #FFFFFF {
+
+        class ref_province {
+            + id_province : INT <<PK>>
+            --
+            code_province : VARCHAR(20) <<UK>>
+            nom_province : VARCHAR(100)
+            est_siege : BOOLEAN
+            date_creation : TIMESTAMP
+        }
+
+        class ref_centre {
+            + id_centre : INT <<PK>>
+            --
+            code_centre : VARCHAR(50) <<UK>>
+            nom_centre : VARCHAR(200)
+            type_centre : VARCHAR(50)
+            id_province : INT <<FK>>
+            date_creation : TIMESTAMP
+        }
+
+        class ref_periode {
+            + id_periode : INT <<PK>>
+            --
+            annee : SMALLINT
+            mois : SMALLINT
+            --
+            UNIQUE(annee, mois)
+        }
+
+        class ref_type_indicateur {
+            + id_type_indicateur : INT <<PK>>
+            --
+            code_indicateur : VARCHAR(50) <<UK>>
+            libelle_indicateur : VARCHAR(200)
+            unite : VARCHAR(50)
+            categorie : VARCHAR(100)
+            ' ordre_affichage : INT
+            ' est_actif : BOOLEAN
+            date_creation : TIMESTAMP
+        }
+
+        class ref_type_reclamation {
+            + id_type_reclamation : INT <<PK>>
+            --
+            code_type : VARCHAR(50) <<UK>>
+            libelle_reclamation : VARCHAR(200)
+            categorie_reclamation : VARCHAR(100)
+            ' est_comptage : BOOLEAN
+            ' est_duree : BOOLEAN
+            ' ordre_affichage : INT
+            ' est_actif : BOOLEAN
+            date_creation : TIMESTAMP
+        }
+
+        ref_province "1" --> "0..*" ref_centre
+    }
+
+    package "Saisie & Workflow" #FFFFFF {
+
+        class lot_saisie {
+            + id_lot : BIGINT <<PK>>
+            --
+            id_centre : INT <<FK>>
+            id_periode : INT <<FK>>
+            type_donnees : VARCHAR(30)
+            statut_agrege : VARCHAR(50)
+            cree_par : INT <<FK>>
+            date_creation : TIMESTAMP
+            date_soumission : TIMESTAMP
+            --
+            UNIQUE(id_centre, id_periode, type_donnees)
+        }
+
+        class donnee_saisie {
+            + id_donnee : BIGINT <<PK>>
+            --
+            id_lot : BIGINT <<FK>>
+            type_donnee : VARCHAR(30)
+            statut : VARCHAR(30)
+            date_modification : TIMESTAMP
+        }
+
+        class saisie_indicateur {
+            + id_donnee : BIGINT <<PK,FK>>
+            --
+            id_type_indicateur : INT <<FK>>
+            valeur_indicateur : DOUBLE PRECISION
+        }
+
+        class saisie_reclamation {
+            + id_donnee : BIGINT <<PK,FK>>
+            --
+            id_type_reclamation : INT <<FK>>
+            ' nombre_reclamations : INT
+            ' temps_moyen_coupure_h : DOUBLE PRECISION
+            ' delai_moyen_traitement_j : DOUBLE PRECISION
+            valeur_brute : DOUBLE PRECISION
+            commentaire_autre : TEXT
+        }
+
+        ' Composition Lot → Lignes
+        lot_saisie "1" *--> "0..*" donnee_saisie
+
+        utilisateurs "1" --> "0..*" lot_saisie
+
+
+        ' Héritage table-per-subclass (flèche d'héritage UML)
+        donnee_saisie <|-- saisie_indicateur
+        donnee_saisie <|-- saisie_reclamation
+    }
+
+    package "Validation & Corrections" #FFFFFF {
+
+        class validation {
+            + id_validation : BIGINT <<PK>>
+            --
+            id_donnee : BIGINT <<FK>>
+            niveau : VARCHAR(30)
+            decision : VARCHAR(30)
+            commentaire : TEXT
+            valide_par : INT <<FK>>
+            date_validation : TIMESTAMP
+        }
+
+        class correction {
+            + id_correction : BIGINT <<PK>>
+            --
+            id_validation : BIGINT <<FK>>
+            id_utilisateur : INT <<FK>>
+            date_correction : TIMESTAMP
+            commentaire : TEXT
+        }
+
+        class detail_correction {
+            + id_detail : BIGINT <<PK>>
+            --
+            id_correction : BIGINT <<FK>>
+            champ_modifie : VARCHAR(100)
+            ancienne_valeur : TEXT
+            nouvelle_valeur : TEXT
+        }
+
+        donnee_saisie "1" --> "0..*" validation : subit
+        validation "1" --> "0..*" correction : si rejet
+        correction "1" *--> "1..*" detail_correction
+    }
+
+    package "Transfert & Délégation" #FFFFFF {
+
+        class transfert_agent {
+            + id_transfert : BIGINT <<PK>>
+            --
+            id_lot : BIGINT <<FK>>
+            id_admin_dp : INT <<FK>>
+            commentaire : TEXT
+            date_transfert : TIMESTAMP
+            traite : BOOLEAN
+            date_traitement : TIMESTAMP
+        }
+        
+        class demande_modification {
+            + id_demande : BIGINT <<PK>>
+            --
+            id_lot : BIGINT <<FK>>
+            id_demandeur : INT <<FK>>
+            role_demandeur : VARCHAR(50)
+            id_destinataire : INT <<FK>>
+            role_destinataire : VARCHAR(50)
+            commentaire : TEXT
+            statut : VARCHAR(30)
+            date_demande : TIMESTAMP
+            date_traitement : TIMESTAMP
+        }
+
+        lot_saisie "1" --> "0..*" transfert_agent
+        lot_saisie "1" --> "0..*" demande_modification
+    }
+
+    ' Relations Référentiels → Métier
+    ref_centre "1" --> "0..*" lot_saisie
+    ref_periode "1" --> "0..*" lot_saisie
+    ref_type_indicateur "1" --> "0..*" saisie_indicateur
+    ref_type_reclamation "1" --> "0..*" saisie_reclamation
+}
+
+' Lien inter-schémas
+ref_province "1" --> "0..*" utilisateurs
+
+
+@enduml

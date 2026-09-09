@@ -21,6 +21,12 @@ x-airflow-common:
     - ./airflow/plugins:/opt/airflow/plugins
     - ./etl:/opt/airflow/etl
     - ./data:/opt/airflow/data
+    # ─── Sources brutes montées depuis le réseau ───────────
+    - /mnt/raw/pmac:/opt/airflow/data/raw/pmac:ro
+    - /mnt/raw/gstcom:/opt/airflow/data/raw/gstcom:ro
+    - /mnt/raw/indicateurs_reclamations:/opt/airflow/data/raw/indicateurs_reclamations:ro
+    - /mnt/raw/Rendements:/opt/airflow/data/raw/Rendements:ro
+    - /mnt/raw/referentiels:/opt/airflow/data/raw/referentiels:ro
     - ./database:/opt/airflow/database
     - ./scripts:/opt/airflow/scripts
     - ./streamlit_app:/opt/airflow/streamlit_app
@@ -29,7 +35,6 @@ x-airflow-common:
       condition: service_healthy
 
 services:
-  # 1. Base de données unifiée (Airflow + DWH)
   postgres:
     image: postgres:17
     environment:
@@ -48,7 +53,6 @@ services:
     ports:
       - "5432:5432"
 
-  # 2. Initialisation Airflow
   airflow-init:
     <<: *airflow-common
     command: version
@@ -60,7 +64,6 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
 
-  # 3. Le Scheduler
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -69,7 +72,6 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # 4. Interface Web Airflow
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -85,7 +87,6 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # 5. Application Streamlit
   streamlit:
     build:
       context: .
